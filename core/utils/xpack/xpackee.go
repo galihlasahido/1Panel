@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
-	"github.com/1Panel-dev/1Panel/core/utils/ssh"
+	"github.com/1Panel-dev/1Panel/libpanel/ssh"
 	edition "github.com/1Panel-dev/1Panel/core/xpack-ee/edition"
 	"github.com/gin-gonic/gin"
 )

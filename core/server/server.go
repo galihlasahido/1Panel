@@ -31,6 +31,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/init/router"
 	"github.com/1Panel-dev/1Panel/core/init/session"
 	"github.com/1Panel-dev/1Panel/core/init/session/psession"
+	sshinit "github.com/1Panel-dev/1Panel/core/init/ssh"
 	"github.com/1Panel-dev/1Panel/core/init/validator"
 	"github.com/1Panel-dev/1Panel/core/init/viper"
 	"github.com/1Panel-dev/1Panel/core/utils/re"
@@ -42,6 +43,7 @@ func Start() {
 	log.Init()
 	db.Init()
 	encrypt.Init() // register libpanel/encrypt KeyProvider before migrations call it
+	sshinit.Init() // register libpanel/ssh Logger + ProxyResolver (uses encrypt)
 	migration.Init()
 	i18n.Init()
 	validator.Init()

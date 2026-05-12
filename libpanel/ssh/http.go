@@ -8,8 +8,6 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	"github.com/1Panel-dev/1Panel/core/global"
 )
 
 type HTTPProxyDialer struct {
@@ -19,11 +17,16 @@ type HTTPProxyDialer struct {
 	Password string
 }
 
+// HTTPDial establishes an outbound connection through an HTTP(S) proxy
+// using the CONNECT method. Used by loadSSHConnByProxy when the host
+// app provides an http or https proxy via the ProxyResolver.
 func HTTPDial(dialer HTTPProxyDialer, network, addr string) (net.Conn, error) {
+	if log != nil {
+		log.Debugf("Dialing HTTP proxy %s for %s", dialer.URL, addr)
+	}
 	var conn net.Conn
 	var err error
 
-	global.LOG.Debugf("Dialing HTTP proxy %s for %s", dialer.URL, addr)
 	dialer.URL = strings.TrimPrefix(dialer.URL, dialer.Type+"://")
 	if dialer.Type == "https" {
 		conn, err = tls.DialWithDialer(

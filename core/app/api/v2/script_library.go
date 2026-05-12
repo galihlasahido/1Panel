@@ -13,7 +13,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/app/dto"
 	"github.com/1Panel-dev/1Panel/core/app/service"
 	"github.com/1Panel-dev/1Panel/core/global"
-	"github.com/1Panel-dev/1Panel/core/utils/ssh"
+	"github.com/1Panel-dev/1Panel/libpanel/ssh"
 	"github.com/1Panel-dev/1Panel/core/utils/terminal"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 	"github.com/gin-gonic/gin"

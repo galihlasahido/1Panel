@@ -9,7 +9,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/controller/manager"
-	"github.com/1Panel-dev/1Panel/core/utils/ssh"
+	"github.com/1Panel-dev/1Panel/libpanel/ssh"
 )
 
 type Controller interface {

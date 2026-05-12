@@ -1,3 +1,12 @@
+// Package ssh wraps golang.org/x/crypto/ssh with conveniences shared
+// across 1Panel-family products: SudoHandleCmd auto-detection, Runf
+// for printf-style remote commands, CpFileWithCheck with md5 retry,
+// streaming stdout/stderr, and optional outbound proxy (HTTP/HTTPS/
+// SOCKS5) resolved via a host-app-provided ProxyResolver.
+//
+// Apps register optional Logger + ProxyResolver via SetLogger /
+// SetProxyResolver during init. Without a ProxyResolver, direct dial
+// is used regardless of UseProxy in ConnInfo.
 package ssh
 
 import (
@@ -8,13 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/1Panel-dev/1Panel/core/app/repo"
-	"github.com/1Panel-dev/1Panel/core/global"
-	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/net/proxy"
 )
 
+// ConnInfo carries everything needed to dial a remote host.
 type ConnInfo struct {
 	User       string `json:"user"`
 	Addr       string `json:"addr"`
@@ -28,10 +35,49 @@ type ConnInfo struct {
 	DialTimeOut time.Duration `json:"dialTimeOut"`
 }
 
+// SSHClient wraps gossh.Client with a SudoItem hint detected at dial time.
 type SSHClient struct {
 	Client   *gossh.Client `json:"client"`
 	SudoItem string        `json:"sudoItem"`
 }
+
+// Logger is the minimal logging interface libpanel/ssh emits to. Optional.
+type Logger interface {
+	Errorf(format string, args ...interface{})
+	Debugf(format string, args ...interface{})
+}
+
+// ProxyConfig describes an outbound proxy to use for SSH dials. Returned
+// by a ProxyResolver supplied by the host app. The Type field selects
+// which dialer to use:
+//   - "http" or "https" → HTTPProxyDialer (CONNECT method)
+//   - "socks5"          → golang.org/x/net/proxy.SOCKS5
+//   - "" (empty)        → no proxy, direct dial
+type ProxyConfig struct {
+	Type     string
+	URL      string
+	Port     string
+	User     string
+	Password string // plain text — caller is responsible for decryption
+}
+
+// ProxyResolver returns the currently configured outbound proxy. Called
+// each time a dial happens (so config changes pick up without restart).
+// Returning an empty Type or an error means no proxy will be used.
+type ProxyResolver func() (*ProxyConfig, error)
+
+var (
+	log           Logger
+	proxyResolver ProxyResolver
+)
+
+// SetLogger registers an optional logger. Without one, internal Debugf /
+// Errorf calls are no-ops.
+func SetLogger(l Logger) { log = l }
+
+// SetProxyResolver registers an optional outbound-proxy resolver.
+// Without one, dials are always direct (UseProxy is ignored).
+func SetProxyResolver(r ProxyResolver) { proxyResolver = r }
 
 func NewClient(c ConnInfo) (*SSHClient, error) {
 	config := &gossh.ClientConfig{}
@@ -87,7 +133,9 @@ func (c *SSHClient) Run(shell string) (string, error) {
 func (c *SSHClient) CpFileWithCheck(src, dst string) error {
 	localMd5, err := c.Runf("md5sum %s | awk '{print $1}'", src)
 	if err != nil {
-		global.LOG.Debugf("load md5sum with src for %s failed, std: %s, err: %v", path.Base(src), localMd5, err)
+		if log != nil {
+			log.Debugf("load md5sum with src for %s failed, std: %s, err: %v", path.Base(src), localMd5, err)
+		}
 		localMd5 = ""
 	}
 	for i := 0; i < 3; i++ {
@@ -101,7 +149,9 @@ func (c *SSHClient) CpFileWithCheck(src, dst string) error {
 		}
 		remoteMd5, errDst := c.Runf("md5sum %s | awk '{print $1}'", dst)
 		if errDst != nil {
-			global.LOG.Debugf("load md5sum with dst for %s failed, std: %s, err: %v", path.Base(src), remoteMd5, errDst)
+			if log != nil {
+				log.Debugf("load md5sum with dst for %s failed, std: %s, err: %v", path.Base(src), remoteMd5, errDst)
+			}
 			return nil
 		}
 		if strings.TrimSpace(localMd5) == strings.TrimSpace(remoteMd5) {
@@ -269,38 +319,33 @@ func DialWithTimeout(network, addr string, useProxy bool, config *gossh.ClientCo
 }
 
 func loadSSHConnByProxy(network, addr string, timeout time.Duration) (net.Conn, error) {
-	settingRepo := repo.NewISettingRepo()
-	proxyType, err := settingRepo.Get(repo.WithByKey("ProxyType"))
+	if proxyResolver == nil {
+		// No proxy resolver registered → fall back to direct dial.
+		return net.DialTimeout(network, addr, timeout)
+	}
+	cfg, err := proxyResolver()
 	if err != nil {
-		return nil, fmt.Errorf("get proxy type from db failed, err: %v", err)
+		return nil, fmt.Errorf("resolve proxy config failed: %v", err)
 	}
-	if len(proxyType.Value) == 0 {
-		return nil, fmt.Errorf("get proxy type from db failed, err: %v", err)
+	if cfg == nil || cfg.Type == "" {
+		return net.DialTimeout(network, addr, timeout)
 	}
-	proxyUrl, _ := settingRepo.Get(repo.WithByKey("ProxyUrl"))
-	port, _ := settingRepo.Get(repo.WithByKey("ProxyPort"))
-	user, _ := settingRepo.Get(repo.WithByKey("ProxyUser"))
-	passwd, _ := settingRepo.Get(repo.WithByKey("ProxyPasswd"))
-
-	pass, _ := encrypt.StringDecrypt(passwd.Value)
-	proxyItem := fmt.Sprintf("%s:%s", proxyUrl.Value, port.Value)
-	switch proxyType.Value {
+	proxyItem := fmt.Sprintf("%s:%s", cfg.URL, cfg.Port)
+	switch cfg.Type {
 	case "http", "https":
 		item := HTTPProxyDialer{
-			Type:     proxyType.Value,
+			Type:     cfg.Type,
 			URL:      proxyItem,
-			User:     user.Value,
-			Password: pass,
+			User:     cfg.User,
+			Password: cfg.Password,
 		}
 		return HTTPDial(item, network, addr)
 	case "socks5":
 		var auth *proxy.Auth
-		if len(user.Value) == 0 {
-			auth = nil
-		} else {
+		if len(cfg.User) != 0 {
 			auth = &proxy.Auth{
-				User:     user.Value,
-				Password: pass,
+				User:     cfg.User,
+				Password: cfg.Password,
 			}
 		}
 		dialer, err := proxy.SOCKS5("tcp", proxyItem, auth, &net.Dialer{
@@ -312,10 +357,6 @@ func loadSSHConnByProxy(network, addr string, timeout time.Duration) (net.Conn, 
 		}
 		return dialer.Dial(network, addr)
 	default:
-		conn, err := net.DialTimeout(network, addr, timeout)
-		if err != nil {
-			return nil, err
-		}
-		return conn, nil
+		return net.DialTimeout(network, addr, timeout)
 	}
 }
