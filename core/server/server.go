@@ -14,6 +14,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/core/init/auth"
 	"github.com/1Panel-dev/1Panel/core/init/db"
+	"github.com/1Panel-dev/1Panel/core/init/encrypt"
 	"github.com/1Panel-dev/1Panel/core/init/geo"
 	"github.com/1Panel-dev/1Panel/core/init/log"
 	"github.com/1Panel-dev/1Panel/core/init/migration"
@@ -40,6 +41,7 @@ func Start() {
 	viper.Init()
 	log.Init()
 	db.Init()
+	encrypt.Init() // register libpanel/encrypt KeyProvider before migrations call it
 	migration.Init()
 	i18n.Init()
 	validator.Init()

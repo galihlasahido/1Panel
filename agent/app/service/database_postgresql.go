@@ -16,7 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/postgresql"
 	"github.com/1Panel-dev/1Panel/agent/utils/postgresql/client"
 	_ "github.com/jackc/pgx/v5/stdlib"

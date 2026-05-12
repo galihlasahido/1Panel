@@ -21,7 +21,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/i18n"
 	"github.com/1Panel-dev/1Panel/agent/utils/cloud_storage"
 	"github.com/1Panel-dev/1Panel/agent/utils/cloud_storage/client"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/files"
 	"github.com/jinzhu/copier"
 )

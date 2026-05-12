@@ -16,7 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/utils/compose"
 	"github.com/1Panel-dev/1Panel/agent/utils/docker"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/docker/docker/api/types/container"
 	_ "github.com/go-sql-driver/mysql"
 )

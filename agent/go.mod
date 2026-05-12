@@ -4,7 +4,12 @@ go 1.25.7
 
 replace github.com/moby/go-archive => github.com/moby/go-archive v0.1.0
 
+// libpanel is a sibling module in this repo. The replace directive lets
+// `cd agent && go build` resolve it without go.work or a published version.
+replace github.com/1Panel-dev/1Panel/libpanel => ../libpanel
+
 require (
+	github.com/1Panel-dev/1Panel/libpanel v0.0.0-00010101000000-000000000000
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/compose-spec/compose-go/v2 v2.10.2
 	github.com/creack/pty v1.1.24

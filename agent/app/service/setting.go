@@ -14,7 +14,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/constant"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/ssh"
 	terminalai "github.com/1Panel-dev/1Panel/agent/utils/terminal/ai"
 	"github.com/jinzhu/copier"

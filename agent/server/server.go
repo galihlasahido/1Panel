@@ -19,6 +19,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/init/cache"
 	"github.com/1Panel-dev/1Panel/agent/init/db"
 	"github.com/1Panel-dev/1Panel/agent/init/dir"
+	encryptinit "github.com/1Panel-dev/1Panel/agent/init/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/init/firewall"
 	"github.com/1Panel-dev/1Panel/agent/init/hook"
 	"github.com/1Panel-dev/1Panel/agent/init/lang"
@@ -27,7 +28,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/init/router"
 	"github.com/1Panel-dev/1Panel/agent/init/validator"
 	"github.com/1Panel-dev/1Panel/agent/init/viper"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/re"
 )
 
@@ -37,6 +38,7 @@ func Start() {
 	dir.Init()
 	log.Init()
 	db.Init()
+	encryptinit.Init() // register libpanel/encrypt KeyProvider before migrations call it
 	migration.Init()
 	i18n.Init()
 	cache.Init()

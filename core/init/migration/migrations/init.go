@@ -16,7 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/init/migration/helper"
 	"github.com/1Panel-dev/1Panel/core/utils/cmd"
 	"github.com/1Panel-dev/1Panel/core/utils/common"
-	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"
 )

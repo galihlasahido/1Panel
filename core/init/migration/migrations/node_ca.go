@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/model"
-	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/libpanel/pki"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"

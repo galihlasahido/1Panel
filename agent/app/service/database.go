@@ -11,7 +11,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
-	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/libpanel/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/mysql"
 	"github.com/1Panel-dev/1Panel/agent/utils/mysql/client"
 	"github.com/1Panel-dev/1Panel/agent/utils/postgresql"

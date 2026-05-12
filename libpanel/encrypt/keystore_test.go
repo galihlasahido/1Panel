@@ -20,15 +20,15 @@ func withTempKeyPath(t *testing.T) string {
 func TestKeyFile_RoundTrip(t *testing.T) {
 	path := withTempKeyPath(t)
 
-	if _, ok := readKeyFile(); ok {
+	if _, ok := ReadKeyFile(); ok {
 		t.Fatalf("expected no key before write")
 	}
-	if err := writeKeyFile("secret-key-123"); err != nil {
-		t.Fatalf("writeKeyFile: %v", err)
+	if err := WriteKeyFile("secret-key-123"); err != nil {
+		t.Fatalf("WriteKeyFile: %v", err)
 	}
-	got, ok := readKeyFile()
+	got, ok := ReadKeyFile()
 	if !ok || got != "secret-key-123" {
-		t.Fatalf("readKeyFile after write: ok=%v got=%q", ok, got)
+		t.Fatalf("ReadKeyFile after write: ok=%v got=%q", ok, got)
 	}
 
 	info, err := os.Stat(path)
@@ -42,17 +42,17 @@ func TestKeyFile_RoundTrip(t *testing.T) {
 
 func TestKeyFile_AtomicWrite(t *testing.T) {
 	withTempKeyPath(t)
-	if err := writeKeyFile("first"); err != nil {
-		t.Fatalf("writeKeyFile: %v", err)
+	if err := WriteKeyFile("first"); err != nil {
+		t.Fatalf("WriteKeyFile: %v", err)
 	}
 	// Overwriting should not leave the temp file behind.
-	if err := writeKeyFile("second"); err != nil {
-		t.Fatalf("writeKeyFile: %v", err)
+	if err := WriteKeyFile("second"); err != nil {
+		t.Fatalf("WriteKeyFile: %v", err)
 	}
 	if _, err := os.Stat(encryptKeyFilePath + ".tmp"); !os.IsNotExist(err) {
 		t.Fatalf("expected .tmp removed after rename, stat err=%v", err)
 	}
-	got, _ := readKeyFile()
+	got, _ := ReadKeyFile()
 	if got != "second" {
 		t.Fatalf("got %q want second", got)
 	}
@@ -60,10 +60,10 @@ func TestKeyFile_AtomicWrite(t *testing.T) {
 
 func TestKeyFile_EmptyKeyIsNoOp(t *testing.T) {
 	withTempKeyPath(t)
-	if err := writeKeyFile(""); err != nil {
-		t.Fatalf("writeKeyFile empty: %v", err)
+	if err := WriteKeyFile(""); err != nil {
+		t.Fatalf("WriteKeyFile empty: %v", err)
 	}
-	if _, ok := readKeyFile(); ok {
+	if _, ok := ReadKeyFile(); ok {
 		t.Fatalf("expected empty write to be a no-op")
 	}
 }

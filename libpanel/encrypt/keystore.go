@@ -14,9 +14,15 @@ import (
 // Declared as a var so tests can redirect to a temporary directory.
 var encryptKeyFilePath = "/etc/1panel/.encrypt_key"
 
-// readKeyFile returns the encryption key stored on disk, if any.
+// SetKeyFilePath overrides the on-disk path used by ReadKeyFile and
+// WriteKeyFile. Apps with their own filesystem layout (e.g. Domus
+// using /etc/domus/.encrypt_key) call this during init before any
+// encrypt operation runs. Default is /etc/1panel/.encrypt_key.
+func SetKeyFilePath(p string) { encryptKeyFilePath = p }
+
+// ReadKeyFile returns the encryption key stored on disk, if any.
 // The second return is false when the file does not exist or is empty.
-func readKeyFile() (string, bool) {
+func ReadKeyFile() (string, bool) {
 	data, err := os.ReadFile(encryptKeyFilePath)
 	if err != nil || len(data) == 0 {
 		return "", false
@@ -24,10 +30,11 @@ func readKeyFile() (string, bool) {
 	return string(data), true
 }
 
-// writeKeyFile persists key to the canonical on-disk location with mode 0600.
-// Best-effort: failures (e.g. /etc/1panel not yet created on a fresh install)
-// are not fatal because the DB-backed key remains the source of truth.
-func writeKeyFile(key string) error {
+// WriteKeyFile persists key to the canonical on-disk location with mode
+// 0600 (atomic via tmp+rename). Best-effort: failures (e.g. /etc/1panel
+// not yet created on a fresh install) are not fatal because the DB-backed
+// key remains the source of truth.
+func WriteKeyFile(key string) error {
 	if key == "" {
 		return nil
 	}
