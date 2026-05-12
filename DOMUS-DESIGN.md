@@ -751,21 +751,27 @@ NOT supported in v1: Plesk format, DirectAdmin format. Add later.
 for tim 3-5. Solo multiply by ~2.5. Numbers below are solo
 calendar-month estimates. v1.0 ETA: **end of year 3 to early year 4**.
 
-### Stage 0 — libpanel extraction (month 1, ~3-4 weeks)
-**Pre-Domus work, done as PR against current 1Panel repo. Solo benefit:
-deduplicates agent/core encrypt code immediately.**
+### Stage 0 — libpanel extraction ✅ DONE (branch `libpanel-extraction`, 2026-05-12)
 
-Progress (branch `libpanel-extraction`, 2026-05-12):
+3 commits landed:
+- `35c127d1f` — pki extracted (Stage 0a)
+- `480705f4f` — encrypt extracted with KeyProvider pattern (Stage 0b)
+- `4de2d9e0d` — ssh extracted with Logger + ProxyResolver (Stage 0c)
 
 - [x] Created `libpanel/` Go module at repo root (`module github.com/1Panel-dev/1Panel/libpanel`).
-- [x] Moved `core/utils/pki/` → `libpanel/pki/` (zero global deps, clean extract). All 7 tests pass standalone. 2 call sites updated (node_ca migration + node_pki service). Core + agent build clean.
-- [x] Added `replace github.com/1Panel-dev/1Panel/libpanel => ../libpanel` directive in `core/go.mod` so `cd core && go build` resolves the sibling module without go.work.
-- [ ] Move `encrypt` from `core/utils/encrypt/` AND `agent/utils/encrypt/` (deduplicates 2 nearly-identical copies). Requires `KeyProvider` pattern in libpanel since current code reaches into `global.CONF.Base.EncryptKey` and `global.DB`. Plus 31 import path updates across core+agent.
-- [ ] Move `ssh` from `core/utils/ssh/`. Has dep on `global.LOG` (debug log) + `core/app/repo` (proxy settings lookup) — needs Logger + setting-lookup injection similar to KeyProvider.
-- [ ] Promote duplicated common helpers (RandBytes, base64) once both modules touched.
-- [ ] Initial sanity test on a real VM.
+- [x] Moved `core/utils/pki/` → `libpanel/pki/` (zero global deps; 7 tests pass standalone).
+- [x] Moved `core/utils/encrypt/` AND `agent/utils/encrypt/` → `libpanel/encrypt/` (single source of truth; KeyProvider pattern lets core + agent inject their own file/CONF/DB resolution policy). 31 import paths updated. Both module test suites pass.
+- [x] Moved `core/utils/ssh/` → `libpanel/ssh/` (Logger + ProxyResolver injection). 10 core imports updated. `agent/utils/ssh/` left as-is (different feature set, no deduplication target).
+- [x] Added `replace github.com/1Panel-dev/1Panel/libpanel => ../libpanel` to both `core/go.mod` and `agent/go.mod` so `cd <mod> && go build` works without `go.work`.
+- [x] Bumped `golang.org/x/crypto` v0.50→0.51 and `golang.org/x/net` v0.53→0.54 in core + agent to match libpanel.
+- [x] Init wiring: `core/init/encrypt`, `core/init/ssh`, `agent/init/encrypt` register providers at startup before migrations run.
+- [x] Verified: core + agent build clean, libpanel encrypt + pki test suites green.
+- [ ] Future (defer until needed): dedupe agent/utils/ssh into libpanel/ssh; promote `RandBytes` + base64 helpers; sanity test on real VM.
 
-Estimated remaining: ~2-3 weeks solo.
+**Outcome**: 1Panel now has a deduplicated shared module ready to be
+imported by Domus repo when created. Three security-critical
+components (encrypt, pki, ssh) live in one place with explicit
+injection points for host-app context.
 
 ### v0.1 — Foundation (months 2-12, ~10-11 months solo)
 Goal: dogfood-able internally; provision a tenant on one node manually.
