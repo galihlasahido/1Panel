@@ -22,6 +22,9 @@ type NodeInfo struct {
 	Version   string `json:"version"`
 	ServerCrt string `json:"serverCrt"`
 	ServerKey string `json:"serverKey"`
+	// RootCrt is the master CA cert (PEM) the slave uses as ClientCAs to
+	// verify the master's incoming mTLS client cert. Empty on master.
+	RootCrt string `json:"rootCrt"`
 }
 
 type LocalConnInfo struct {

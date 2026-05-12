@@ -53,6 +53,10 @@ func requiresCSRFTokenCheck(c *gin.Context) bool {
 	if c.GetBool("API_AUTH") {
 		return false
 	}
-	sessionID, err := c.Cookie(constant.SessionName)
-	return err == nil && sessionID != ""
+	// Defense-in-depth: always enforce CSRF on state-changing requests under
+	// /api/v2/ for cookie-based clients. The session-middleware will reject
+	// unauthenticated requests independently; here we just guarantee the CSRF
+	// header is present so a missing session cookie cannot silently bypass
+	// the check.
+	return true
 }

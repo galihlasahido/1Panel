@@ -87,6 +87,7 @@ func Start() {
 		constant.CertStore.Store(loadCert())
 
 		server.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				return constant.CertStore.Load().(*tls.Certificate), nil
 			},
@@ -101,6 +102,7 @@ func Start() {
 		constant.CertStore.Store(loadCert())
 
 		server.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			NextProtos: []string{"h2", "http/1.1"},
 			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				return constant.CertStore.Load().(*tls.Certificate), nil
@@ -146,7 +148,7 @@ func Start() {
 		}
 		return
 	} else {
-		global.LOG.Infof("listen at http://%s:%s [%s]", global.CONF.Conn.BindAddress, global.CONF.Conn.Port, tcpItem)
+		global.LOG.Warnf("listen at http://%s:%s [%s] — TLS is DISABLED; login credentials, session cookies, and CSRF tokens travel in plaintext. Enable SSL in Panel Settings before exposing this port beyond loopback.", global.CONF.Conn.BindAddress, global.CONF.Conn.Port, tcpItem)
 		if err := server.Serve(tcpKeepAliveListener{ln.(*net.TCPListener)}); err != nil {
 			panic(err)
 		}

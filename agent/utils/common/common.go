@@ -173,6 +173,17 @@ func RandStr(n int) string {
 	return string(b)
 }
 
+// RandBytes returns n cryptographically random bytes. For symmetric keys and
+// other binary secrets prefer this over RandStr, which is restricted to a
+// 62-char alphabet (~5.95 bits/char).
+func RandBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 func RandStrAndNum(n int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)

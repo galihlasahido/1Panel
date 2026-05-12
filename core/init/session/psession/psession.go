@@ -2,6 +2,7 @@ package psession
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"net/http"
@@ -32,7 +33,15 @@ type PSession struct {
 	lastFullCleanup time.Time
 }
 
-const maxSessionEntries = 64
+const (
+	// maxSessionEntries caps total in-memory sessions across all users.
+	maxSessionEntries = 64
+	// maxSessionsPerUser caps concurrent sessions per username so a single
+	// account cannot displace every other user's session by repeated logins.
+	// Combined with maxSessionEntries this bounds the worst-case memory
+	// footprint at maxSessionEntries entries.
+	maxSessionsPerUser = 8
+)
 
 func NewPSession(_ string) *PSession {
 	return &PSession{
@@ -112,6 +121,7 @@ func (p *PSession) set(c *gin.Context, user SessionUser, secure bool, ttlSeconds
 		User:      user,
 		ExpiredAt: expiredAt,
 	}
+	p.evictPerUserOverflowLocked(sessionID, user.Name)
 	p.evictOverflowLocked(sessionID)
 	p.mu.Unlock()
 	p.cleanupExpiredOnWrite()
@@ -121,6 +131,37 @@ func (p *PSession) set(c *gin.Context, user SessionUser, secure bool, ttlSeconds
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(constant.CSRFTokenName, csrfToken, ttlSeconds, "/", "", secure, false)
 	return nil
+}
+
+// evictPerUserOverflowLocked drops the oldest sessions belonging to username
+// when they exceed maxSessionsPerUser. The currently-being-set session is
+// never evicted. Caller must hold p.mu (write).
+func (p *PSession) evictPerUserOverflowLocked(currentSessionID, username string) {
+	if maxSessionsPerUser <= 0 || username == "" {
+		return
+	}
+	for {
+		count := 0
+		oldestID := ""
+		var oldestItem sessionItem
+		for sessionID, item := range p.sessions {
+			if item.User.Name != username {
+				continue
+			}
+			count++
+			if sessionID == currentSessionID {
+				continue
+			}
+			if oldestID == "" || item.CreatedAt.Before(oldestItem.CreatedAt) {
+				oldestID = sessionID
+				oldestItem = item
+			}
+		}
+		if count <= maxSessionsPerUser || oldestID == "" {
+			return
+		}
+		delete(p.sessions, oldestID)
+	}
 }
 
 func (p *PSession) evictOverflowLocked(currentSessionID string) {
@@ -196,7 +237,7 @@ func (p *PSession) CheckCSRFToken(c *gin.Context, token string) bool {
 		p.mu.Unlock()
 		return false
 	}
-	return item.CSRFToken == token
+	return subtle.ConstantTimeCompare([]byte(item.CSRFToken), []byte(token)) == 1
 }
 
 func (p *PSession) Clean() error {

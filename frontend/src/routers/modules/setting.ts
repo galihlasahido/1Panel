@@ -113,6 +113,18 @@ const settingRouter = {
                         ignoreTab: true,
                     },
                 },
+                {
+                    path: 'nodes',
+                    name: 'Nodes',
+                    hidden: true,
+                    component: () => import('@/views/setting/node/index.vue'),
+                    meta: {
+                        parent: 'menu.settings',
+                        title: 'setting.nodes',
+                        requiresAuth: true,
+                        activeMenu: '/settings',
+                    },
+                },
             ],
         },
     ],

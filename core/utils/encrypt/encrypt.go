@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -17,6 +18,58 @@ import (
 	"github.com/1Panel-dev/1Panel/core/app/model"
 	"github.com/1Panel-dev/1Panel/core/global"
 )
+
+// v2Prefix marks ciphertext encrypted with AES-256-GCM (authenticated).
+// Values without this prefix are legacy AES-128-CBC + PKCS7 from earlier
+// versions and are still decrypted for backward compatibility.
+const v2Prefix = "v2:"
+
+func deriveKeyV2(k string) []byte {
+	sum := sha256.Sum256([]byte(k))
+	return sum[:]
+}
+
+func aesGCMEncrypt(key []byte, plaintext []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ct := aead.Seal(nil, nonce, plaintext, nil)
+	out := append(nonce, ct...)
+	return v2Prefix + base64.StdEncoding.EncodeToString(out), nil
+}
+
+func aesGCMDecrypt(key []byte, encoded string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < aead.NonceSize() {
+		return "", errors.New("ciphertext too short")
+	}
+	nonce, ct := raw[:aead.NonceSize()], raw[aead.NonceSize():]
+	pt, err := aead.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
+}
 
 func StringDecryptWithBase64(text string) (string, error) {
 	decryptItem, err := StringDecrypt(text)
@@ -30,42 +83,56 @@ func StringEncrypt(text string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(global.CONF.Base.EncryptKey) == 0 {
-		var encryptSetting model.Setting
-		if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
-			return "", err
-		}
-		global.CONF.Base.EncryptKey = encryptSetting.Value
+	key, err := resolveEncryptKey()
+	if err != nil {
+		return "", err
 	}
-	key := global.CONF.Base.EncryptKey
 	return StringEncryptWithKey(text, key)
+}
+
+// resolveEncryptKey returns the master AES key, sourcing it in priority order:
+//  1. /etc/1panel/.encrypt_key (mode 0600) — preferred, lives outside the DB
+//  2. global.CONF.Base.EncryptKey (process-cached value)
+//  3. setting table EncryptKey row
+//
+// After loading from the DB or process cache, the key is best-effort persisted
+// to the file so future boots prefer the file. This makes a stolen DB
+// snapshot insufficient to decrypt secrets at rest.
+func resolveEncryptKey() (string, error) {
+	if k, ok := readKeyFile(); ok {
+		if global.CONF.Base.EncryptKey != k {
+			global.CONF.Base.EncryptKey = k
+		}
+		return k, nil
+	}
+	if len(global.CONF.Base.EncryptKey) > 0 {
+		_ = writeKeyFile(global.CONF.Base.EncryptKey)
+		return global.CONF.Base.EncryptKey, nil
+	}
+	var encryptSetting model.Setting
+	if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
+		return "", err
+	}
+	global.CONF.Base.EncryptKey = encryptSetting.Value
+	_ = writeKeyFile(encryptSetting.Value)
+	return encryptSetting.Value, nil
 }
 
 func StringEncryptWithKey(text, key string) (string, error) {
 	if len(text) == 0 || len(key) == 0 {
 		return "", nil
 	}
-	pass := []byte(text)
-	xpass, err := aesEncryptWithSalt([]byte(key), pass)
-	if err == nil {
-		pass64 := base64.StdEncoding.EncodeToString(xpass)
-		return pass64, err
-	}
-	return "", err
+	return aesGCMEncrypt(deriveKeyV2(key), []byte(text))
 }
 
 func StringDecrypt(text string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(global.CONF.Base.EncryptKey) == 0 {
-		var encryptSetting model.Setting
-		if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
-			return "", err
-		}
-		global.CONF.Base.EncryptKey = encryptSetting.Value
+	key, err := resolveEncryptKey()
+	if err != nil {
+		return "", err
 	}
-	key := global.CONF.Base.EncryptKey
 	return StringDecryptWithKey(text, key)
 }
 
@@ -80,17 +147,18 @@ func StringDecryptWithKey(text, key string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
+	if strings.HasPrefix(text, v2Prefix) {
+		return aesGCMDecrypt(deriveKeyV2(key), text[len(v2Prefix):])
+	}
 	bytesPass, err := base64.StdEncoding.DecodeString(text)
 	if err != nil {
 		return "", err
 	}
-	var tpass []byte
-	tpass, err = aesDecryptWithSalt([]byte(key), bytesPass)
-	if err == nil {
-		result := string(tpass[:])
-		return result, err
+	tpass, err := aesDecryptWithSalt([]byte(key), bytesPass)
+	if err != nil {
+		return "", err
 	}
-	return "", err
+	return string(tpass), nil
 }
 
 func padding(plaintext []byte, blockSize int) []byte {
@@ -99,10 +167,21 @@ func padding(plaintext []byte, blockSize int) []byte {
 	return append(plaintext, padtext...)
 }
 
-func unPadding(origData []byte) []byte {
+func unPadding(origData []byte) ([]byte, error) {
 	length := len(origData)
+	if length == 0 {
+		return nil, errors.New("invalid padding size")
+	}
 	unpadding := int(origData[length-1])
-	return origData[:(length - unpadding)]
+	if unpadding == 0 || unpadding > length || unpadding > aes.BlockSize {
+		return nil, errors.New("invalid padding")
+	}
+	for i := 0; i < unpadding; i++ {
+		if origData[length-1-i] != byte(unpadding) {
+			return nil, errors.New("invalid padding")
+		}
+	}
+	return origData[:(length - unpadding)], nil
 }
 
 func aesEncryptWithSalt(key, plaintext []byte) ([]byte, error) {
@@ -129,12 +208,14 @@ func aesDecryptWithSalt(key, ciphertext []byte) ([]byte, error) {
 	if len(ciphertext) < aes.BlockSize {
 		return nil, fmt.Errorf("iciphertext too short")
 	}
+	if (len(ciphertext)-aes.BlockSize)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("ciphertext is not a multiple of the block size")
+	}
 	iv := ciphertext[:aes.BlockSize]
 	ciphertext = ciphertext[aes.BlockSize:]
 	cbc := cipher.NewCBCDecrypter(block, iv)
 	cbc.CryptBlocks(ciphertext, ciphertext)
-	ciphertext = unPadding(ciphertext)
-	return ciphertext, nil
+	return unPadding(ciphertext)
 }
 
 func ParseRSAPrivateKey(privateKeyPEM string) (*rsa.PrivateKey, error) {

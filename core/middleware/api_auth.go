@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"net"
 	"strconv"
@@ -75,9 +78,30 @@ func isValid1PanelTimestamp(panelTimestamp string) bool {
 	return nowTime-panelTime <= int64(apiTime)*60+tolerance
 }
 
+// isValid1PanelToken accepts two token formats:
+//   - v1 (legacy, deprecated): hex(md5("1panel" + apiKey + timestamp)), 32 chars
+//   - v2 (preferred):          hex(HMAC-SHA256(apiKey, "1panel" + timestamp)), 64 chars
+//
+// Format is auto-detected by length. Both comparisons use constant-time
+// equality. v1 is retained for backward compatibility with deployed API
+// clients; new integrations should use v2.
 func isValid1PanelToken(panelToken string, panelTimestamp string) bool {
 	system1PanelToken := global.Api.ApiKey
-	return panelToken == GenerateMD5("1panel"+system1PanelToken+panelTimestamp)
+	if system1PanelToken == "" {
+		return false
+	}
+	switch len(panelToken) {
+	case 64:
+		mac := hmac.New(sha256.New, []byte(system1PanelToken))
+		mac.Write([]byte("1panel" + panelTimestamp))
+		expected := hex.EncodeToString(mac.Sum(nil))
+		return subtle.ConstantTimeCompare([]byte(panelToken), []byte(expected)) == 1
+	case 32:
+		expected := GenerateMD5("1panel" + system1PanelToken + panelTimestamp)
+		return subtle.ConstantTimeCompare([]byte(panelToken), []byte(expected)) == 1
+	default:
+		return false
+	}
 }
 
 func isIPInWhiteList(clientIP string) bool {

@@ -38,6 +38,8 @@ func Init() {
 		migrations.UpdateAiModelMenuStructure,
 		migrations.AddDocSourceSetting,
 		migrations.AddAppStoreInstallAllowPortSetting,
+		migrations.InitMasterCA,
+		migrations.AddNodeTable,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

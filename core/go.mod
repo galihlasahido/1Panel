@@ -2,7 +2,12 @@ module github.com/1Panel-dev/1Panel/core
 
 go 1.25.7
 
+// libpanel is a sibling module in this repo. The replace directive lets
+// `cd core && go build` resolve it without go.work or a published version.
+replace github.com/1Panel-dev/1Panel/libpanel => ../libpanel
+
 require (
+	github.com/1Panel-dev/1Panel/libpanel v0.0.0-00010101000000-000000000000
 	github.com/1panel-dev/base64Captcha v1.3.8
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.9.0

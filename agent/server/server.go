@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
-	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/cron"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
@@ -63,9 +62,18 @@ func Start() {
 
 	if global.IsMaster {
 		_ = os.Remove("/etc/1panel/agent.sock")
-		_ = os.Mkdir("/etc/1panel", constant.DirPerm)
+		// /etc/1panel holds the agent control socket; restrict it to the agent
+		// user so unprivileged local accounts cannot speak HTTP to the agent
+		// directly (bypassing core auth).
+		if err := os.MkdirAll("/etc/1panel", 0o700); err != nil {
+			panic(err)
+		}
+		_ = os.Chmod("/etc/1panel", 0o700)
 		listener, err := net.Listen("unix", "/etc/1panel/agent.sock")
 		if err != nil {
+			panic(err)
+		}
+		if err := os.Chmod("/etc/1panel/agent.sock", 0o600); err != nil {
 			panic(err)
 		}
 		business.Init()
@@ -91,6 +99,7 @@ func Start() {
 		}
 
 		server.TLSConfig = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{tlsCert},
 			ClientAuth:   tls.RequireAndVerifyClientCert,
 		}

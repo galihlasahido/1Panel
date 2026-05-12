@@ -1,14 +1,15 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/agent/app/api/v2/helper"
 	"github.com/1Panel-dev/1Panel/agent/global"
-	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 	"github.com/gin-gonic/gin"
 )
@@ -28,11 +29,14 @@ func Certificate() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		masterProxyID := c.Request.Header.Get("Proxy-Id")
-		proxyID, err := cmd.RunDefaultWithStdoutBashC("cat /etc/1panel/.nodeProxyID")
-		if err == nil && len(proxyID) != 0 && strings.TrimSpace(proxyID) != strings.TrimSpace(masterProxyID) {
-			helper.InternalServer(c, fmt.Errorf("err proxy id"))
-			return
+		masterProxyID := strings.TrimSpace(c.Request.Header.Get("Proxy-Id"))
+		raw, err := os.ReadFile("/etc/1panel/.nodeProxyID")
+		if err == nil && len(raw) != 0 {
+			expected := strings.TrimSpace(string(raw))
+			if subtle.ConstantTimeCompare([]byte(expected), []byte(masterProxyID)) != 1 {
+				helper.InternalServer(c, fmt.Errorf("err proxy id"))
+				return
+			}
 		}
 		c.Next()
 	}

@@ -17,6 +17,9 @@ func Init() {
 	if _, err := global.Cron.AddJob("0 3 */31 * *", job.NewBackupJob()); err != nil {
 		global.LOG.Errorf("[core] can not add backup token refresh corn job: %s", err.Error())
 	}
+	if _, err := global.Cron.AddJob("@every 30s", job.NewNodeHealthJob()); err != nil {
+		global.LOG.Errorf("[core] can not add node-health corn job: %s", err.Error())
+	}
 
 	service.StartSync()
 	global.Cron.Start()

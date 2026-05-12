@@ -41,7 +41,11 @@ func FileSharePublicAccess() gin.HandlerFunc {
 			return
 		}
 		if code != "" && (strings.HasSuffix(c.Request.URL.Path, "/share/check") || strings.HasSuffix(c.Request.URL.Path, "/share/download")) {
-			if !allowLimiter(&publicCodeLimiters, "code:"+ip+":"+code, rate.Every(5*time.Second), 4) {
+			// Per-code GLOBAL limit (across all IPs): prevents distributed
+			// password brute-force against a single share code. A botnet
+			// rotating IPs would still be capped to ~18 attempts/min for the
+			// same code.
+			if !allowLimiter(&publicCodeLimiters, "code:"+code, rate.Every(10*time.Second), 3) {
 				helper.ErrorWithDetail(c, http.StatusTooManyRequests, "ErrFileShareRateLimit", buserr.New("ErrFileShareRateLimit"))
 				return
 			}

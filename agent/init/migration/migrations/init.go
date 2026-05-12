@@ -112,6 +112,12 @@ var InitSetting = &gormigrate.Migration{
 		if err := tx.Create(&model.Setting{Key: "ServerCrt", Value: itemCrt}).Error; err != nil {
 			return err
 		}
+		if nodeInfo.RootCrt != "" {
+			rootCrt, _ := encrypt.StringEncrypt(nodeInfo.RootCrt)
+			if err := tx.Create(&model.Setting{Key: "RootCrt", Value: rootCrt}).Error; err != nil {
+				return err
+			}
+		}
 		if err := tx.Create(&model.Setting{Key: "NodeScope", Value: nodeInfo.Scope}).Error; err != nil {
 			return err
 		}

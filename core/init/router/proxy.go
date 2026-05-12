@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -67,7 +68,7 @@ func Proxy() gin.HandlerFunc {
 func proxyLocalAgent(c *gin.Context) {
 	defer func() {
 		if err := recover(); err != nil && err != http.ErrAbortHandler {
-			global.LOG.Debug(err)
+			global.LOG.Errorf("panic in proxyLocalAgent: %v\n%s", err, debug.Stack())
 		}
 	}()
 	proxy.LocalAgentProxy.ServeHTTP(c.Writer, c.Request)

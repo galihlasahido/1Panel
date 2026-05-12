@@ -5,13 +5,68 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/global"
 )
+
+// v2Prefix marks ciphertext encrypted with AES-256-GCM (authenticated).
+// Values without this prefix are legacy AES-128-CBC + PKCS7 and are still
+// decrypted for backward compatibility.
+const v2Prefix = "v2:"
+
+func deriveKeyV2(k string) []byte {
+	sum := sha256.Sum256([]byte(k))
+	return sum[:]
+}
+
+func aesGCMEncrypt(key []byte, plaintext []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ct := aead.Seal(nil, nonce, plaintext, nil)
+	out := append(nonce, ct...)
+	return v2Prefix + base64.StdEncoding.EncodeToString(out), nil
+}
+
+func aesGCMDecrypt(key []byte, encoded string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < aead.NonceSize() {
+		return "", errors.New("ciphertext too short")
+	}
+	nonce, ct := raw[:aead.NonceSize()], raw[aead.NonceSize():]
+	pt, err := aead.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
+}
 
 func StringEncryptWithBase64(text string) (string, error) {
 	accessKeyItem, err := base64.StdEncoding.DecodeString(text)
@@ -29,35 +84,45 @@ func StringEncryptWithKey(text, key string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(key) < 16 {
-		for len(key) < 16 {
-			key += "u"
-		}
-	} else {
-		key = key[:16]
+	if len(key) == 0 {
+		return "", errors.New("empty encryption key")
 	}
-	pass := []byte(text)
-	xpass, err := aesEncryptWithSalt([]byte(key), pass)
-	if err == nil {
-		pass64 := base64.StdEncoding.EncodeToString(xpass)
-		return pass64, err
-	}
-	return "", err
+	return aesGCMEncrypt(deriveKeyV2(key), []byte(text))
 }
 
 func StringEncrypt(text string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(global.CONF.Base.EncryptKey) == 0 {
-		var encryptSetting model.Setting
-		if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
-			return "", err
-		}
-		global.CONF.Base.EncryptKey = encryptSetting.Value
+	key, err := resolveEncryptKey()
+	if err != nil {
+		return "", err
 	}
-	key := global.CONF.Base.EncryptKey
 	return StringEncryptWithKey(text, key)
+}
+
+// resolveEncryptKey returns the master AES key, sourcing it in priority order:
+// file → process cache → setting row. See core/utils/encrypt/encrypt.go for
+// the full rationale. After loading from a slower source the value is best
+// effort written to the file so future boots use the file path.
+func resolveEncryptKey() (string, error) {
+	if k, ok := readKeyFile(); ok {
+		if global.CONF.Base.EncryptKey != k {
+			global.CONF.Base.EncryptKey = k
+		}
+		return k, nil
+	}
+	if len(global.CONF.Base.EncryptKey) > 0 {
+		_ = writeKeyFile(global.CONF.Base.EncryptKey)
+		return global.CONF.Base.EncryptKey, nil
+	}
+	var encryptSetting model.Setting
+	if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
+		return "", err
+	}
+	global.CONF.Base.EncryptKey = encryptSetting.Value
+	_ = writeKeyFile(encryptSetting.Value)
+	return encryptSetting.Value, nil
 }
 
 func StringDecryptWithBase64(text string) (string, error) {
@@ -77,38 +142,36 @@ func StringDecryptWithKey(text, key string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(key) < 16 {
-		for len(key) < 16 {
-			key += "u"
+	if strings.HasPrefix(text, v2Prefix) {
+		return aesGCMDecrypt(deriveKeyV2(key), text[len(v2Prefix):])
+	}
+	legacyKey := key
+	if len(legacyKey) < 16 {
+		for len(legacyKey) < 16 {
+			legacyKey += "u"
 		}
 	} else {
-		key = key[:16]
+		legacyKey = legacyKey[:16]
 	}
 	bytesPass, err := base64.StdEncoding.DecodeString(text)
 	if err != nil {
 		return "", err
 	}
-	var tpass []byte
-	tpass, err = aesDecryptWithSalt([]byte(key), bytesPass)
-	if err == nil {
-		result := string(tpass[:])
-		return result, err
+	tpass, err := aesDecryptWithSalt([]byte(legacyKey), bytesPass)
+	if err != nil {
+		return "", err
 	}
-	return "", err
+	return string(tpass), nil
 }
 
 func StringDecrypt(text string) (string, error) {
 	if len(text) == 0 {
 		return "", nil
 	}
-	if len(global.CONF.Base.EncryptKey) == 0 {
-		var encryptSetting model.Setting
-		if err := global.DB.Where("key = ?", "EncryptKey").First(&encryptSetting).Error; err != nil {
-			return "", err
-		}
-		global.CONF.Base.EncryptKey = encryptSetting.Value
+	key, err := resolveEncryptKey()
+	if err != nil {
+		return "", err
 	}
-	key := global.CONF.Base.EncryptKey
 	return StringDecryptWithKey(text, key)
 }
 
