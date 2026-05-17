@@ -10,6 +10,10 @@ type UserLoginInfo struct {
 	Token      string `json:"token"`
 	MfaStatus  string `json:"mfaStatus"`
 	MfaSession string `json:"mfaSession"`
+	// RBAC: surfaced so the frontend can filter the sidebar/router.
+	IsSuper bool     `json:"isSuper"`
+	Menus   []string `json:"menus"`
+	Nodes   []string `json:"nodes"`
 }
 
 type PasskeyBeginResponse struct {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
+	"github.com/1Panel-dev/1Panel/core/app/model"
 	"github.com/1Panel-dev/1Panel/core/app/repo"
 	"github.com/1Panel-dev/1Panel/core/buserr"
 	"github.com/1Panel-dev/1Panel/core/constant"
@@ -57,11 +58,32 @@ func (u *AuthService) Login(c *gin.Context, info dto.Login, entrance string) (*d
 	if err != nil {
 		return nil, "", buserr.New("ErrRecordNotFound")
 	}
-	if nameSetting.Value != info.Name {
-		return nil, "ErrAuth", buserr.New("ErrAuth")
-	}
-	if err = checkPassword(info.Password); err != nil {
-		return nil, "ErrAuth", err
+	isSuper := nameSetting.Value == info.Name
+	if isSuper {
+		if err = checkPassword(info.Password); err != nil {
+			return nil, "ErrAuth", err
+		}
+	} else {
+		// RBAC sub-user: resolve the users table, must be Enabled,
+		// password compared via the same RSA+AES envelope.
+		ruser, uerr := repo.NewIUserRepo().Get(repo.WithByName(info.Name))
+		if uerr != nil {
+			return nil, "ErrAuth", buserr.New("ErrAuth")
+		}
+		if ruser.Status != model.UserStatusEnable {
+			return nil, "ErrAuth", buserr.New("ErrAuth")
+		}
+		plain, derr := decryptLoginEnvelope(info.Password)
+		if derr != nil {
+			return nil, "ErrAuth", derr
+		}
+		stored, serr := encrypt.StringDecrypt(ruser.Password)
+		if serr != nil {
+			return nil, "", serr
+		}
+		if !hmac.Equal([]byte(plain), []byte(stored)) {
+			return nil, "ErrAuth", buserr.New("ErrAuth")
+		}
 	}
 	entranceSetting, err := settingRepo.Get(repo.WithByKey("SecurityEntrance"))
 	if err != nil {
@@ -70,17 +92,22 @@ func (u *AuthService) Login(c *gin.Context, info dto.Login, entrance string) (*d
 	if len(entranceSetting.Value) != 0 && entranceSetting.Value != entrance {
 		return nil, "ErrEntrance", buserr.New("ErrEntrance")
 	}
-	mfa, err := settingRepo.Get(repo.WithByKey("MFAStatus"))
-	if err != nil {
-		return nil, "", err
-	}
-	if err = settingRepo.Update("Language", info.Language); err != nil {
-		return nil, "", err
-	}
-	if mfa.Value == constant.StatusEnable {
-		ip := common.GetRealClientIP(c)
-		mfaSession := initauth.GetMFASessionStore().Set(nameSetting.Value, entrance, ip)
-		return &dto.UserLoginInfo{Name: nameSetting.Value, MfaStatus: mfa.Value, MfaSession: mfaSession}, "", nil
+	if isSuper {
+		// Global language + MFA belong to the bootstrap admin only; a
+		// sub-user login must not clobber the panel language and has
+		// no MFA in v1.
+		if err = settingRepo.Update("Language", info.Language); err != nil {
+			return nil, "", err
+		}
+		mfa, merr := settingRepo.Get(repo.WithByKey("MFAStatus"))
+		if merr != nil {
+			return nil, "", merr
+		}
+		if mfa.Value == constant.StatusEnable {
+			ip := common.GetRealClientIP(c)
+			mfaSession := initauth.GetMFASessionStore().Set(nameSetting.Value, entrance, ip)
+			return &dto.UserLoginInfo{Name: nameSetting.Value, MfaStatus: mfa.Value, MfaSession: mfaSession}, "", nil
+		}
 	}
 	res, err := u.generateSession(c, info.Name)
 	if err != nil {
@@ -141,12 +168,41 @@ func (u *AuthService) generateSession(c *gin.Context, name string) (*dto.UserLog
 		return nil, err
 	}
 
-	sessionUser := psession.SessionUser{Name: name}
+	sessionUser := buildSessionUser(name)
 	if err := global.SESSION.SetFresh(c, sessionUser, httpsSetting.Value == constant.StatusEnable, lifeTime); err != nil {
 		return nil, err
 	}
 
-	return &dto.UserLoginInfo{Name: name}, nil
+	return &dto.UserLoginInfo{
+		Name:    name,
+		IsSuper: sessionUser.IsSuper,
+		Menus:   sessionUser.Menus,
+		Nodes:   sessionUser.Nodes,
+	}, nil
+}
+
+// buildSessionUser resolves a logged-in identity into the session
+// payload. The settings UserName is the bootstrap superadmin (full
+// access, "*"); any other name is an RBAC sub-user whose menu/node
+// allowlists come from the users table.
+func buildSessionUser(name string) psession.SessionUser {
+	adminName, _ := settingRepo.GetValueByKey("UserName")
+	if name == adminName {
+		return psession.SessionUser{Name: name, IsSuper: true, Menus: []string{"*"}, Nodes: []string{"*"}}
+	}
+	u, err := repo.NewIUserRepo().Get(repo.WithByName(name))
+	if err != nil {
+		// Unknown name with a valid session should not happen (Login
+		// gates it); be safe and grant nothing.
+		return psession.SessionUser{Name: name, IsSuper: false, Menus: []string{}, Nodes: []string{}}
+	}
+	return psession.SessionUser{
+		ID:      u.ID,
+		Name:    u.Name,
+		IsSuper: false,
+		Menus:   unmarshalList(u.Menus),
+		Nodes:   unmarshalList(u.Nodes),
+	}
 }
 
 func (u *AuthService) LogOut(c *gin.Context) error {
@@ -793,14 +849,19 @@ func stripHostPort(hostport string) string {
 	return strings.Trim(hostport, "[]")
 }
 
-func checkPassword(password string) error {
+// decryptLoginEnvelope unwraps the browser's RSA+AES login envelope to
+// the plaintext password, using the panel's stored RSA private key.
+func decryptLoginEnvelope(password string) (string, error) {
 	priKey, _ := settingRepo.Get(repo.WithByKey("PASSWORD_PRIVATE_KEY"))
-
 	privateKey, err := encrypt.ParseRSAPrivateKey(priKey.Value)
 	if err != nil {
-		return err
+		return "", err
 	}
-	loginPassword, err := encrypt.DecryptPassword(password, privateKey)
+	return encrypt.DecryptPassword(password, privateKey)
+}
+
+func checkPassword(password string) error {
+	loginPassword, err := decryptLoginEnvelope(password)
 	if err != nil {
 		return err
 	}

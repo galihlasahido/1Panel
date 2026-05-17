@@ -17,6 +17,12 @@ import (
 type SessionUser struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
+	// RBAC: IsSuper = the bootstrap settings admin (full access).
+	// Menus/Nodes hold the sub-user's allowed top-level menu keys and
+	// node names; a list containing "*" means "all".
+	IsSuper bool     `json:"isSuper"`
+	Menus   []string `json:"menus"`
+	Nodes   []string `json:"nodes"`
 }
 
 type sessionItem struct {

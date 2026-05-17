@@ -17,6 +17,7 @@ func (s *BaseRouter) InitRouter(Router *gin.RouterGroup) {
 		baseRouter.POST("/mfalogin", baseApi.MFALogin)
 		baseRouter.POST("/login", baseApi.Login)
 		baseRouter.POST("/logout", baseApi.LogOut)
+		baseRouter.GET("/me", baseApi.GetCurrentUser)
 		baseRouter.GET("/setting", baseApi.GetLoginSetting)
 		baseRouter.GET("/welcome", baseApi.GetWelcomePage)
 	}
