@@ -1,0 +1,45 @@
+# 1Panel (built from this source) in Docker.
+#
+# IMPORTANT — what actually works:
+#  • Docker / app-store / website / database / container management:
+#    YES, against the host's Docker daemon (docker.sock mounted).
+#  • Host-OS management (system users, firewall/nft, systemd services,
+#    SSH, OS package updates, xfs quota): DEGRADED — 1Panel shells out
+#    to local binaries which, in a container, affect the container, not
+#    the host. Full host management needs the upstream host installer
+#    on a real Linux machine.
+#  • On macOS/Docker Desktop there is no real Linux host: this can only
+#    ever manage the Docker Desktop VM, not your Mac. Run this on a
+#    Linux server for meaningful host/Docker management.
+#
+# privileged + host namespaces are set to give it the broadest access
+# a container can have; it is still not equivalent to a host install.
+
+services:
+    1panel:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: 1panel/local:dev
+        container_name: 1panel
+        restart: unless-stopped
+        privileged: true
+        # Host networking so the panel binds the host's :9999 and can
+        # see host interfaces. (Linux only; ignored/limited on macOS.)
+        network_mode: host
+        pid: host
+        environment:
+            PANEL_PORT: "9999"
+            PANEL_USERNAME: "admin"
+            # Required — no weak default. Set in .env (gitignored).
+            PANEL_PASSWORD: ${PANEL_PASSWORD:?set PANEL_PASSWORD in .env (>=8 chars)}
+            TZ: "UTC"
+        volumes:
+            # The host Docker daemon — this is what makes container /
+            # app / website / db management actually work.
+            - /var/run/docker.sock:/var/run/docker.sock
+            # Persist panel data (SQLite, configs, certs) across restarts.
+            - /opt/1panel:/opt/1panel
+            - /etc/1panel:/etc/1panel
+            # Host filesystem visibility for the file manager / backups.
+            - /:/host

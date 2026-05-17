@@ -1,0 +1,9 @@
+.git
+**/node_modules
+frontend/dist
+build
+core/cmd/server/web/assets
+core/cmd/server/web/index.html
+core/cmd/server/web/favicon.png
+**/*.log
+DomusControlPanel.html
