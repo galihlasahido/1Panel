@@ -86,4 +86,40 @@ router.afterEach((to) => {
     NProgress.done();
 });
 
+// After a redeploy the hashed chunk filenames change. A tab that still
+// runs the previous bundle will fail to lazy-load a route chunk with
+// "Failed to fetch dynamically imported module". Recover by doing a
+// single hard reload (which pulls the fresh index.html + chunk graph),
+// guarded so a genuinely missing chunk can't cause a reload loop.
+const isChunkLoadError = (err: unknown): boolean => {
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    return (
+        /Failed to fetch dynamically imported module/i.test(msg) ||
+        /error loading dynamically imported module/i.test(msg) ||
+        /Importing a module script failed/i.test(msg)
+    );
+};
+
+const reloadOnceForStaleChunks = () => {
+    const KEY = 'chunk-reload-at';
+    const last = Number(sessionStorage.getItem(KEY) || 0);
+    // Only auto-reload if we haven't already done so in the last 10s.
+    if (Date.now() - last < 10_000) return;
+    sessionStorage.setItem(KEY, String(Date.now()));
+    window.location.reload();
+};
+
+router.onError((err) => {
+    if (isChunkLoadError(err)) {
+        NProgress.done();
+        reloadOnceForStaleChunks();
+    }
+});
+
+// Lazy imports that fail outside a navigation (e.g. a deferred
+// component) surface as an unhandled rejection — catch those too.
+window.addEventListener('vite:preloadError', () => {
+    reloadOnceForStaleChunks();
+});
+
 export default router;
