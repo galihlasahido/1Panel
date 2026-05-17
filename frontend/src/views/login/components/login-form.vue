@@ -253,7 +253,8 @@ import { MsgError, MsgSuccess } from '@/utils/message';
 import { useI18n } from 'vue-i18n';
 import { encryptPassword, base64UrlToBuffer, bufferToBase64Url } from '@/utils/auth';
 import { getXpackSettingForTheme } from '@/utils/xpack';
-import { routerToName } from '@/utils/router';
+import { routerToName, routerToPath } from '@/utils/router';
+import { getCurrentUser } from '@/api/modules/user';
 import { changeToLocal, setDefaultNodeInfo } from '@/utils/node';
 import { Key } from '@element-plus/icons-vue';
 
@@ -262,6 +263,54 @@ const themeConfig = computed(() => globalStore.themeConfig);
 const globalStore = GlobalStore();
 const menuStore = MenuStore();
 const tabsStore = TabsStore();
+
+// Keys must match core/middleware/rbac.go. A restricted sub-user can't
+// load the dashboard (it aggregates feature APIs they're not allowed),
+// so land them on their first permitted menu instead of 'home'.
+const RBAC_MENU_PATH: Record<string, string> = {
+    apps: '/apps',
+    website: '/websites',
+    database: '/databases',
+    container: '/containers',
+    cron: '/cronjobs',
+    host: '/hosts',
+    toolbox: '/toolbox',
+    ai: '/ai',
+    logs: '/logs',
+    settings: '/settings',
+};
+const RBAC_MENU_ORDER = [
+    'apps',
+    'website',
+    'database',
+    'container',
+    'cron',
+    'host',
+    'toolbox',
+    'ai',
+    'logs',
+    'settings',
+];
+
+const gotoLanding = async () => {
+    try {
+        const me = await getCurrentUser();
+        const d: any = me.data;
+        if (d && !d.isSuper && Array.isArray(d.menus) && !d.menus.includes('*')) {
+            const first = RBAC_MENU_ORDER.find((k) => d.menus.includes(k));
+            if (first) {
+                await routerToPath(RBAC_MENU_PATH[first]);
+                return;
+            }
+            // No permitted menu at all — nothing to show.
+            MsgError(i18n.t('commons.res.forbidden'));
+            return;
+        }
+    } catch (e) {
+        // fall through to the default dashboard
+    }
+    routerToName('home');
+};
 
 const errAuthInfo = ref(false);
 const errCaptcha = ref(false);
@@ -452,7 +501,7 @@ const login = (formEl: FormInstance | undefined) => {
             setDefaultNodeInfo();
             localStorage.removeItem('dashboardCache');
             localStorage.removeItem('upgradeChecked');
-            routerToName('home');
+            await gotoLanding();
             document.onkeydown = null;
         } catch (res) {
             if (res.code === 401) {
@@ -496,7 +545,7 @@ const mfaLogin = async (auto: boolean) => {
             setDefaultNodeInfo();
             localStorage.removeItem('dashboardCache');
             localStorage.removeItem('upgradeChecked');
-            routerToName('home');
+            await gotoLanding();
             document.onkeydown = null;
         } catch (res) {
             if (res.code === 401) {
@@ -563,7 +612,7 @@ const passkeyLogin = async () => {
         setDefaultNodeInfo();
         localStorage.removeItem('dashboardCache');
         localStorage.removeItem('upgradeChecked');
-        routerToName('home');
+        await gotoLanding();
         document.onkeydown = null;
     } catch (res: any) {
         disableAutoPasskey();
