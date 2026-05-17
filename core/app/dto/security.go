@@ -24,6 +24,18 @@ type SecurityNodeSummary struct {
 	FirewallStatus string   `json:"firewallStatus"`
 }
 
+// SecurityActivity is one host-activity event, tagged with its node.
+type SecurityActivity struct {
+	Node      string    `json:"node"`
+	EventTime time.Time `json:"eventTime"`
+	Kind      string    `json:"kind"`
+	Actor     string    `json:"actor"`
+	Source    string    `json:"source"`
+	Target    string    `json:"target"`
+	Detail    string    `json:"detail"`
+	Severity  string    `json:"severity"`
+}
+
 // SecurityOverview is the aggregated multi-node security posture.
 type SecurityOverview struct {
 	GeneratedAt    time.Time             `json:"generatedAt"`

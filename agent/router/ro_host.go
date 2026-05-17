@@ -77,5 +77,9 @@ func (s *HostRouter) InitRouter(Router *gin.RouterGroup) {
 		hostRouter.POST("/disks/unmount", baseApi.UnmountDisk)
 
 		hostRouter.GET("/components/:name", baseApi.CheckComponentExistence)
+
+		hostRouter.POST("/activity/search", baseApi.SearchHostActivity)
+		hostRouter.POST("/activity/collect", baseApi.CollectHostActivity)
+		hostRouter.POST("/activity/integrity/rebuild", baseApi.RebuildFileBaseline)
 	}
 }

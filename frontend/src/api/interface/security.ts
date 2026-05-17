@@ -17,6 +17,16 @@ export namespace Security {
         listeningPorts: number;
         firewallStatus: string;
     }
+    export interface ActivityEntry {
+        node: string;
+        eventTime: string;
+        kind: string;
+        actor: string;
+        source: string;
+        target: string;
+        detail: string;
+        severity: string;
+    }
     export interface Overview {
         generatedAt: string;
         nodesTotal: number;

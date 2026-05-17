@@ -2,7 +2,7 @@
     <div v-loading="loading">
         <LayoutContent :title="$t('menu.security')">
             <template #rightToolBar>
-                <TableRefresh @search="load()" />
+                <TableRefresh @search="refreshAll()" />
             </template>
             <template #main>
                 <el-alert type="info" :closable="false" class="common-div">
@@ -101,6 +101,41 @@
                     <el-table-column label="Message" prop="message" min-width="220" show-overflow-tooltip />
                     <template #empty>No failed SSH logins reported.</template>
                 </el-table>
+
+                <el-divider content-position="left">
+                    Host activity timeline
+                    <el-select
+                        v-model="kindFilter"
+                        size="small"
+                        style="width: 170px; margin-left: 12px"
+                        @change="loadActivity"
+                    >
+                        <el-option label="All kinds" value="" />
+                        <el-option label="SSH login" value="ssh_login" />
+                        <el-option label="SSH failed" value="ssh_failed" />
+                        <el-option label="SSH brute-force" value="ssh_bruteforce" />
+                        <el-option label="Fail2Ban ban" value="fail2ban_ban" />
+                        <el-option label="Fail2Ban unban" value="fail2ban_unban" />
+                        <el-option label="File change" value="file_change" />
+                    </el-select>
+                </el-divider>
+                <el-table :data="activity" border max-height="520">
+                    <el-table-column label="Node" prop="node" min-width="90" />
+                    <el-table-column label="Time" min-width="160">
+                        <template #default="{ row }">{{ fmtTime(row.eventTime) }}</template>
+                    </el-table-column>
+                    <el-table-column label="Severity" min-width="100">
+                        <template #default="{ row }">
+                            <el-tag :type="sevType(row.severity)">{{ row.severity }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="Kind" prop="kind" min-width="130" />
+                    <el-table-column label="Actor" prop="actor" min-width="100" />
+                    <el-table-column label="Source" prop="source" min-width="130" />
+                    <el-table-column label="Target" prop="target" min-width="140" show-overflow-tooltip />
+                    <el-table-column label="Detail" prop="detail" min-width="220" show-overflow-tooltip />
+                    <template #empty>No host activity recorded yet.</template>
+                </el-table>
             </template>
         </LayoutContent>
     </div>
@@ -108,9 +143,24 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { getSecurityOverview } from '@/api/modules/security';
+import { getSecurityOverview, getSecurityActivity } from '@/api/modules/security';
 import { Security } from '@/api/interface/security';
 import { MsgError } from '@/utils/message';
+
+const activity = ref<Security.ActivityEntry[]>([]);
+const kindFilter = ref('');
+
+const fmtTime = (t: string) => (t ? new Date(t).toLocaleString() : '-');
+const sevType = (s: string) => (s === 'crit' ? 'danger' : s === 'warn' ? 'warning' : 'info');
+
+const loadActivity = async () => {
+    try {
+        const res = await getSecurityActivity(200, kindFilter.value);
+        activity.value = res.data || [];
+    } catch (e: any) {
+        MsgError(e?.message || 'Failed to load activity timeline');
+    }
+};
 
 const loading = ref(false);
 const generatedAt = ref('-');
@@ -139,7 +189,12 @@ const load = async () => {
     }
 };
 
-onMounted(load);
+const refreshAll = () => {
+    load();
+    loadActivity();
+};
+
+onMounted(refreshAll);
 </script>
 
 <style scoped lang="scss">

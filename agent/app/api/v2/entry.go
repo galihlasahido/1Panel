@@ -48,6 +48,7 @@ var (
 
 	deviceService   = service.NewIDeviceService()
 	fail2banService = service.NewIFail2BanService()
+	hostActivityService = service.NewIHostActivityService()
 	ftpService      = service.NewIFtpService()
 	clamService     = service.NewIClamService()
 

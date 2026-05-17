@@ -17,5 +17,6 @@ func (s *SecurityRouter) InitRouter(Router *gin.RouterGroup) {
 	baseApi := v2.ApiGroupApp.BaseApi
 	{
 		securityRouter.GET("/overview", baseApi.SecurityOverview)
+		securityRouter.GET("/activity", baseApi.SecurityActivity)
 	}
 }

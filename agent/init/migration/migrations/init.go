@@ -1266,3 +1266,31 @@ var AddFileHistoryTable = &gormigrate.Migration{
 		return nil
 	},
 }
+
+var AddHostActivityTable = &gormigrate.Migration{
+	ID: "20260517-add-host-activity-table",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.HostActivity{}, &model.FileIntegrityBaseline{}); err != nil {
+			return err
+		}
+		defaultRows := []model.Setting{
+			{Key: "HostActivityStatus", Value: constant.StatusEnable},
+			{Key: "HostActivityRetentionDays", Value: "30"},
+			{Key: "FileIntegrityStatus", Value: constant.StatusEnable},
+			{Key: "FileIntegrityPaths", Value: "/etc/passwd,/etc/shadow,/etc/group,/etc/sudoers,/etc/ssh/sshd_config,/root/.ssh/authorized_keys,/etc/crontab"},
+		}
+		for i := range defaultRows {
+			var exist model.Setting
+			if err := tx.Where("`key` = ?", defaultRows[i].Key).First(&exist).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					if err := tx.Create(&defaultRows[i]).Error; err != nil {
+						return err
+					}
+				} else {
+					return err
+				}
+			}
+		}
+		return nil
+	},
+}

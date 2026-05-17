@@ -83,6 +83,12 @@ func Run() {
 			global.LOG.Errorf("update cronjob %s %s failed, err: %v", cronJobs[i].Type, cronJobs[i].Name, err)
 		}
 	}
+	if _, err := global.Cron.AddFunc("@every 5m", func() {
+		_ = service.NewIHostActivityService().Collect()
+	}); err != nil {
+		global.LOG.Errorf("can not add host-activity collector cron job: %s", err.Error())
+	}
+
 	global.Cron.Start()
 }
 

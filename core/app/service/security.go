@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
@@ -10,6 +11,7 @@ import (
 
 type ISecurityService interface {
 	Overview() (*dto.SecurityOverview, error)
+	Activity(limit int, kind string) ([]dto.SecurityActivity, error)
 }
 
 type SecurityService struct{}
@@ -121,6 +123,60 @@ func (s *SecurityService) Overview() (*dto.SecurityOverview, error) {
 		ov.Nodes = append(ov.Nodes, ns)
 	}
 	return ov, nil
+}
+
+// Activity fans the host-activity timeline out across all nodes and
+// returns the merged, newest-first list (capped at `limit`).
+func (s *SecurityService) Activity(limit int, kind string) ([]dto.SecurityActivity, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"page":     1,
+		"pageSize": limit,
+		"kind":     kind,
+	})
+	out := []dto.SecurityActivity{}
+	for _, r := range xpack.CollectFromNodes("POST", "/api/v2/hosts/activity/search", body, 8*time.Second) {
+		if r.Err != "" {
+			continue
+		}
+		data, ok := unwrap(r.Body)
+		if !ok {
+			continue
+		}
+		var page struct {
+			Items []struct {
+				EventTime time.Time `json:"eventTime"`
+				Kind      string    `json:"kind"`
+				Actor     string    `json:"actor"`
+				Source    string    `json:"source"`
+				Target    string    `json:"target"`
+				Detail    string    `json:"detail"`
+				Severity  string    `json:"severity"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal(data, &page); err != nil {
+			continue
+		}
+		for _, it := range page.Items {
+			out = append(out, dto.SecurityActivity{
+				Node:      r.NodeName,
+				EventTime: it.EventTime,
+				Kind:      it.Kind,
+				Actor:     it.Actor,
+				Source:    it.Source,
+				Target:    it.Target,
+				Detail:    it.Detail,
+				Severity:  it.Severity,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].EventTime.After(out[j].EventTime) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // parseStringList tolerates either a bare ["ip", ...] or {"items":[...]}.
