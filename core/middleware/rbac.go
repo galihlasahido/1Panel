@@ -88,6 +88,19 @@ func unmarshalUserList(s string) []string {
 	return out
 }
 
+// shellCriticalPaths are read-only endpoints the SPA shell calls on
+// every page (panel version, hideMenu config). They sit under a gated
+// prefix but must stay reachable for any authenticated user, else the
+// shell errors for sub-users before they ever reach an allowed page.
+var shellCriticalPaths = map[string]struct{}{
+	"/api/v2/core/settings/search": {},
+}
+
+func isShellCriticalPath(p string) bool {
+	_, ok := shellCriticalPaths[p]
+	return ok
+}
+
 func menuForPath(p string) (string, bool) {
 	for _, r := range menuRules {
 		if strings.HasPrefix(p, r.prefix) {
@@ -144,6 +157,13 @@ func RBACEnforce() gin.HandlerFunc {
 		}
 		su.Menus = unmarshalUserList(ruser.Menus)
 		su.Nodes = unmarshalUserList(ruser.Nodes)
+		if isShellCriticalPath(p) {
+			// Shell-critical reads the SPA needs on every page regardless
+			// of feature menus (panel version, hideMenu config). Gating
+			// these would error the app shell for every sub-user.
+			c.Next()
+			return
+		}
 		if key, gated := menuForPath(p); gated && !allowedMenu(su.Menus, key) {
 			helper.ErrorWithDetail(c, http.StatusForbidden, "ErrNotLogin",
 				errors.New("menu not permitted for this user"))

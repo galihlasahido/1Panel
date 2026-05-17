@@ -81,6 +81,18 @@ class RequestHttp {
         this.service.interceptors.response.use(
             (response: AxiosResponse) => {
                 const { data } = response;
+                // RBAC authorization denials come back as code 403 with an
+                // "...not permitted..." / "superadmin only" message. The user
+                // IS authenticated — surface the error but do NOT log them
+                // out (that bounced restricted sub-users back to login the
+                // moment they hit any disallowed API).
+                const isRbacDenied =
+                    data.code == ResultEnum.FORBIDDEN &&
+                    /not permitted|superadmin only/i.test(String(data.message || ''));
+                if (isRbacDenied) {
+                    MsgError(data.message);
+                    return Promise.reject(data);
+                }
                 if (data.code == ResultEnum.OVERDUE || data.code == ResultEnum.FORBIDDEN) {
                     globalStore.isLogin = false;
                     router.push({
