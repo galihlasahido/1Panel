@@ -19,4 +19,5 @@ var (
 	scriptService  = service.NewIScriptService()
 	nodeService    = service.NewINodeService()
 	nodePKIService = service.NewINodePKIService()
+	userService    = service.NewIUserService()
 )

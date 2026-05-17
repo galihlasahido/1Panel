@@ -40,6 +40,7 @@ func Init() {
 		migrations.AddAppStoreInstallAllowPortSetting,
 		migrations.InitMasterCA,
 		migrations.AddNodeTable,
+		migrations.AddUserTable,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

@@ -10,5 +10,6 @@ func commonGroups() []CommonRouter {
 		&GroupRouter{},
 		&ScriptRouter{},
 		&NodeRouter{},
+		&UserRouter{},
 	}
 }
