@@ -53,6 +53,7 @@ const menuKeyByPath: Record<string, string> = {
     '/toolbox': 'toolbox',
     '/ai': 'ai',
     '/logs': 'logs',
+    '/security': 'security',
     '/settings': 'settings',
 };
 

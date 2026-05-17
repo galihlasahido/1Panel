@@ -56,6 +56,7 @@ type menuRule struct {
 }
 
 var menuRules = []menuRule{
+	{"/api/v2/core/security", "security"},
 	{"/api/v2/core/settings", "settings"},
 	{"/api/v2/core/backups", "settings"},
 	{"/api/v2/core/commands", "settings"},

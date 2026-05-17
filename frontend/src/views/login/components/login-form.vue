@@ -278,6 +278,7 @@ const RBAC_MENU_PATH: Record<string, string> = {
     toolbox: '/toolbox',
     ai: '/ai',
     logs: '/logs',
+    security: '/security',
     settings: '/settings',
 };
 const RBAC_MENU_ORDER = [
@@ -290,6 +291,7 @@ const RBAC_MENU_ORDER = [
     'toolbox',
     'ai',
     'logs',
+    'security',
     'settings',
 ];
 

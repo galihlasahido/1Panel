@@ -45,5 +45,6 @@ export const RBAC_MENU_KEYS = [
     'toolbox',
     'ai',
     'logs',
+    'security',
     'settings',
 ];

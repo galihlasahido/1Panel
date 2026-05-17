@@ -359,6 +359,7 @@ const message = {
         container: '容器',
         cronjob: '计划任务',
         system: '系统',
+        security: '安全',
         files: '文件',
         monitor: '监控',
         terminal: '终端',

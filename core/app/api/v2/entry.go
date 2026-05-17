@@ -20,4 +20,6 @@ var (
 	nodeService    = service.NewINodeService()
 	nodePKIService = service.NewINodePKIService()
 	userService    = service.NewIUserService()
+
+	securityService = service.NewISecurityService()
 )
