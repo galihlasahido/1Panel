@@ -155,11 +155,10 @@ const changeFilter = () => {
 const loadNodes = async () => {
     loading.value = true;
     nodes.value = [];
-    if (!isMasterPro.value) {
-        setDefaultNodeInfo();
-        loading.value = false;
-        return;
-    }
+    // OSS multi-node: the node list/switcher used to be Pro-gated here
+    // (early return when !isMasterPro), even though the OSS backend
+    // fully supports enrolled nodes. Always load the node options;
+    // showNodes() keeps the picker hidden until a real node exists.
     await listNodeOptions('all')
         .then((res) => {
             if (!res) {
@@ -231,7 +230,9 @@ const loadGlobalSetting = async () => {
 };
 
 const showNodes = () => {
-    return nodes.value.length > 0 && isMasterPro;
+    // Show the node switcher whenever there's more than just the local
+    // node (i.e. at least one enrolled node) — OSS or Pro.
+    return nodes.value.length > 1;
 };
 
 const taskCount = ref(0);
