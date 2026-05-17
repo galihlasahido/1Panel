@@ -118,3 +118,46 @@ func (b *BaseApi) AddNode(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, info)
 }
+
+// @Tags Node
+// @Summary List all nodes (incl. the synthetic local node)
+// @Success 200 {array} dto.NodeItem
+// @Router /core/nodes/all [get]
+func (b *BaseApi) ListAllNodes(c *gin.Context) {
+	items, err := nodeService.ListItems()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}
+
+// @Tags Node
+// @Summary List all nodes (filtered form used by the node picker)
+// @Accept json
+// @Param request body dto.NodeListReq true "request"
+// @Success 200 {array} dto.NodeItem
+// @Router /core/nodes/list [post]
+func (b *BaseApi) ListNodes(c *gin.Context) {
+	var req dto.NodeListReq
+	_ = c.ShouldBindJSON(&req)
+	items, err := nodeService.ListItems()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}
+
+// @Tags Node
+// @Summary List all nodes with light host metadata
+// @Success 200 {array} dto.SimpleNodeItem
+// @Router /core/nodes/simple/all [get]
+func (b *BaseApi) ListSimpleNodes(c *gin.Context) {
+	items, err := nodeService.ListSimpleItems()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}

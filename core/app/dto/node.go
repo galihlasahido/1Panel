@@ -44,3 +44,37 @@ type NodeSearch struct {
 	Status  string `json:"status"`
 	GroupID uint   `json:"groupID"`
 }
+
+// NodeListReq is the body of POST /core/nodes/list.
+type NodeListReq struct {
+	Type string `json:"type"`
+}
+
+// NodeItem feeds the node picker (GET /core/nodes/all, /core/nodes/list).
+// The list always includes a synthetic "local" entry for the master so
+// the picker works in a single-node / local context too.
+type NodeItem struct {
+	ID      uint   `json:"id"`
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	IsXpack bool   `json:"isXpack"`
+	IsBound bool   `json:"isBound"`
+}
+
+// SimpleNodeItem feeds GET /core/nodes/simple/all. Live host metrics
+// (cpu/memory) are not collected here — reported as 0 rather than
+// fabricated; the panel treats them as optional.
+type SimpleNodeItem struct {
+	ID                uint    `json:"id"`
+	Name              string  `json:"name"`
+	Addr              string  `json:"addr"`
+	Description       string  `json:"description"`
+	SystemVersion     string  `json:"systemVersion"`
+	SecurityEntrance  string  `json:"securityEntrance"`
+	CPUUsedPercent    float64 `json:"cpuUsedPercent"`
+	CPUTotal          int     `json:"cpuTotal"`
+	MemoryTotal       int64   `json:"memoryTotal"`
+	MemoryUsedPercent float64 `json:"memoryUsedPercent"`
+}

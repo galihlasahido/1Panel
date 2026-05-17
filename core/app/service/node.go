@@ -33,12 +33,76 @@ type INodeService interface {
 	Delete(id uint) error
 	Recheck(id uint) (*dto.NodeInfo, error)
 	EnrollViaSSH(req dto.NodeCreate) (*dto.NodeInfo, error)
+	ListItems() ([]dto.NodeItem, error)
+	ListSimpleItems() ([]dto.SimpleNodeItem, error)
 }
 
 type NodeService struct{}
 
 func NewINodeService() INodeService {
 	return &NodeService{}
+}
+
+// localNode is the synthetic entry representing this master / the
+// local agent (reached over the unix socket, no node row).
+func localNodeItem() dto.NodeItem {
+	return dto.NodeItem{
+		ID:      0,
+		Name:    "local",
+		Addr:    "127.0.0.1",
+		Status:  "Healthy",
+		Version: global.CONF.Base.Version,
+		IsXpack: false,
+		IsBound: true,
+	}
+}
+
+// ListItems backs GET /core/nodes/all and POST /core/nodes/list. It
+// always leads with the synthetic local node so the node picker works
+// even with zero enrolled nodes (previously /all fell through to the
+// /:id route and 400'd with "invalid id").
+func (s *NodeService) ListItems() ([]dto.NodeItem, error) {
+	nodes, err := repo.NewINodeRepo().List()
+	if err != nil {
+		return nil, err
+	}
+	items := []dto.NodeItem{localNodeItem()}
+	for _, n := range nodes {
+		items = append(items, dto.NodeItem{
+			ID:      n.ID,
+			Name:    n.Name,
+			Addr:    n.Addr,
+			Status:  n.Status,
+			Version: n.Version,
+			IsXpack: false,
+			IsBound: true,
+		})
+	}
+	return items, nil
+}
+
+// ListSimpleItems backs GET /core/nodes/simple/all.
+func (s *NodeService) ListSimpleItems() ([]dto.SimpleNodeItem, error) {
+	nodes, err := repo.NewINodeRepo().List()
+	if err != nil {
+		return nil, err
+	}
+	items := []dto.SimpleNodeItem{{
+		ID:            0,
+		Name:          "local",
+		Addr:          "127.0.0.1",
+		SystemVersion: global.CONF.Base.Version,
+	}}
+	for _, n := range nodes {
+		items = append(items, dto.SimpleNodeItem{
+			ID:            n.ID,
+			Name:          n.Name,
+			Addr:          n.Addr,
+			Description:   n.Description,
+			SystemVersion: n.Version,
+		})
+	}
+	return items, nil
 }
 
 func toNodeInfo(n model.Node) dto.NodeInfo {
