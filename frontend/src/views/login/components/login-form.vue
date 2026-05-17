@@ -255,6 +255,7 @@ import { encryptPassword, base64UrlToBuffer, bufferToBase64Url } from '@/utils/a
 import { getXpackSettingForTheme } from '@/utils/xpack';
 import { routerToName, routerToPath } from '@/utils/router';
 import { getCurrentUser } from '@/api/modules/user';
+import { resetRbacPerms } from '@/utils/rbac';
 import { changeToLocal, setDefaultNodeInfo } from '@/utils/node';
 import { Key } from '@element-plus/icons-vue';
 
@@ -293,6 +294,8 @@ const RBAC_MENU_ORDER = [
 ];
 
 const gotoLanding = async () => {
+    // Drop any perms cached for a previously logged-in user.
+    resetRbacPerms();
     try {
         const me = await getCurrentUser();
         const d: any = me.data;

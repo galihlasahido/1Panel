@@ -2,12 +2,13 @@ import router from '@/routers/router';
 import NProgress from '@/config/nprogress';
 import { GlobalStore } from '@/store';
 import { AxiosCanceler } from '@/api/helper/axios-cancel';
+import { loadRbacPerms, isPathAllowed, firstAllowedPath } from '@/utils/rbac';
 
 const axiosCanceler = new AxiosCanceler();
 
 let isRedirecting = false;
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     NProgress.start();
     axiosCanceler.removeAllPending();
     const globalStore = GlobalStore();
@@ -31,6 +32,32 @@ router.beforeEach((to, from, next) => {
         next({ name: '404' });
         NProgress.done();
         return;
+    }
+
+    // RBAC route enforcement: a restricted sub-user must not reach a
+    // page outside their allowed menus even by typing the URL (the
+    // sidebar filter alone doesn't stop direct navigation). Fails open
+    // if perms can't be resolved — the backend still gates every API.
+    if (!isPublicRoute && globalStore.isLogin) {
+        const perms = await loadRbacPerms();
+        if (perms && !perms.isSuper && !perms.menus.includes('*')) {
+            // Home/dashboard aggregates feature APIs they can't call, so
+            // it's effectively off-limits too — send them somewhere usable.
+            const wantsHome = to.path === '/' || to.name === 'home';
+            if (wantsHome || !isPathAllowed(perms, to.path)) {
+                const dest = firstAllowedPath(perms);
+                if (dest && dest !== to.path && !to.path.startsWith(dest + '/') && to.path !== dest) {
+                    next(dest);
+                    NProgress.done();
+                    return;
+                }
+                if (!dest) {
+                    next({ name: 'entrance', params: { code: globalStore.entrance } });
+                    NProgress.done();
+                    return;
+                }
+            }
+        }
     }
 
     if (to.path === '/apps/all' && to.query.install != undefined) {
