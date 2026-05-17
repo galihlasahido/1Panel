@@ -8,8 +8,12 @@ FROM ubuntu:24.04
 
 # docker.io: the agent aborts at startup (before its logger inits, so
 # silently) if it can't reach Docker. The socket is bind-mounted at run.
+# docker-compose-v2: 1Panel App Store apps are Compose stacks
+# (`docker compose up`); without the plugin the agent logs
+# "Docker Compose command not found" and installs fail.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      openssh-server ca-certificates coreutils iproute2 procps docker.io \
+      openssh-server ca-certificates coreutils iproute2 procps \
+      docker.io docker-compose-v2 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd \
     && echo 'root:nodepass123' | chpasswd \
