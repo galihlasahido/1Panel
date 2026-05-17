@@ -87,6 +87,10 @@ func Routers() *gin.Engine {
 	Router.Use(middleware.PasswordExpired())
 	Router.Use(middleware.ApiAuth())
 	Router.Use(middleware.CSRFTokenGuard())
+	// RBAC: gate feature modules by the session user's allowed menus
+	// (after ApiAuth so API_AUTH is set; before Proxy so a restricted
+	// user can't proxy a disallowed module to a node).
+	Router.Use(middleware.RBACEnforce())
 
 	PrivateGroup := Router.Group("/api/v2/core")
 	PrivateGroup.Use(middleware.SetPasswordPublicKey())
