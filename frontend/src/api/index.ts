@@ -125,6 +125,14 @@ class RequestHttp {
                             return;
                         case 403:
                             if (isCsrfForbidden(response)) {
+                                // A stale/missing CSRF token means the session is
+                                // no longer trusted — send the user back to login
+                                // instead of silently failing the request.
+                                globalStore.isLogin = false;
+                                router.push({
+                                    name: 'entrance',
+                                    params: { code: globalStore.entrance },
+                                });
                                 return Promise.reject(error);
                             }
                             if (response.data && response.data['message']) {
