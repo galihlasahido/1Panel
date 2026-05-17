@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
@@ -19,6 +20,11 @@ type IUserService interface {
 	UpdatePassword(req dto.UserUpdatePassword) error
 	Delete(id uint) error
 }
+
+// ErrUserConflict — a create was rejected because the name is taken or
+// collides with the superadmin. Surfaced as HTTP 400 (not 500) by the
+// API layer so the UI can show a sensible message.
+var ErrUserConflict = errors.New("user name conflict")
 
 type UserService struct{}
 
@@ -85,10 +91,10 @@ func (s *UserService) Get(id uint) (*dto.UserInfo, error) {
 
 func (s *UserService) Create(req dto.UserCreate) (*dto.UserInfo, error) {
 	if _, err := repo.NewIUserRepo().Get(repo.WithByName(req.Name)); err == nil {
-		return nil, errors.New("a user with this name already exists")
+		return nil, fmt.Errorf("%w: a user named %q already exists", ErrUserConflict, req.Name)
 	}
 	if name, _ := repo.NewISettingRepo().GetValueByKey("UserName"); name == req.Name {
-		return nil, errors.New("name collides with the superadmin account")
+		return nil, fmt.Errorf("%w: name collides with the superadmin account", ErrUserConflict)
 	}
 	enc, err := encrypt.StringEncrypt(req.Password)
 	if err != nil {

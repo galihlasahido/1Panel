@@ -37,7 +37,24 @@ import SubItem from './components/SubItem.vue';
 import { menuList } from '@/routers/router';
 import { GlobalStore, MenuStore } from '@/store';
 import { getSettingInfo } from '@/api/modules/setting';
+import { getCurrentUser } from '@/api/modules/user';
 import PrimaryMenu from '@/assets/images/menu-bg.svg?component';
+
+// Map a top-level menu route path to its canonical RBAC menu key.
+// MUST stay in sync with core/middleware/rbac.go. Paths not listed
+// (dashboard, etc.) are never gated and always shown.
+const menuKeyByPath: Record<string, string> = {
+    '/apps': 'apps',
+    '/websites': 'website',
+    '/databases': 'database',
+    '/containers': 'container',
+    '/cronjobs': 'cron',
+    '/hosts': 'host',
+    '/toolbox': 'toolbox',
+    '/ai': 'ai',
+    '/logs': 'logs',
+    '/settings': 'settings',
+};
 
 const route = useRoute();
 const menuStore = MenuStore();
@@ -114,8 +131,24 @@ const search = async () => {
             menuItem.children = itemChildren;
             rstMenuList.push(menuItem);
         }
-        if (!isSameMenuList(menuStore.menuList as RouteRecordRaw[], rstMenuList)) {
-            menuStore.setMenuList(rstMenuList);
+        // RBAC: hide feature menus a sub-user isn't allowed. This is a
+        // UX nicety only — core/middleware/rbac.go enforces the same
+        // rules on every API call, so a hand-crafted request still 403s.
+        let finalMenuList = rstMenuList;
+        try {
+            const me = await getCurrentUser();
+            const allowed: string[] = me.data?.menus || [];
+            if (me.data && !me.data.isSuper && !allowed.includes('*')) {
+                finalMenuList = rstMenuList.filter((m: any) => {
+                    const key = menuKeyByPath[m.path as string];
+                    return !key || allowed.includes(key);
+                });
+            }
+        } catch {
+            /* /me not resolvable → leave the menu unfiltered */
+        }
+        if (!isSameMenuList(menuStore.menuList as RouteRecordRaw[], finalMenuList)) {
+            menuStore.setMenuList(finalMenuList);
         }
     } catch (error) {
         if (!menuStore.menuList || menuStore.menuList.length === 0) {

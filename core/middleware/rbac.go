@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/core/app/api/v2/helper"
+	"github.com/1Panel-dev/1Panel/core/app/model"
+	"github.com/1Panel-dev/1Panel/core/app/repo"
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/gin-gonic/gin"
 )
@@ -73,6 +76,18 @@ var menuRules = []menuRule{
 	{"/api/v2/logs", "logs"},
 }
 
+// unmarshalUserList decodes a user's JSON-encoded menu/node allowlist.
+// Mirrors service.unmarshalList; kept local to avoid a middleware ->
+// service import.
+func unmarshalUserList(s string) []string {
+	out := []string{}
+	if s == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(s), &out)
+	return out
+}
+
 func menuForPath(p string) (string, bool) {
 	for _, r := range menuRules {
 		if strings.HasPrefix(p, r.prefix) {
@@ -116,6 +131,19 @@ func RBACEnforce() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// Mid-session revalidation: a sub-user whose account was deleted
+		// or disabled after login must lose access immediately, not at
+		// session expiry. Re-read the live row and re-derive perms from
+		// it so permission edits also take effect without re-login.
+		ruser, rerr := repo.NewIUserRepo().Get(repo.WithByName(su.Name))
+		if rerr != nil || ruser.Status != model.UserStatusEnable {
+			helper.ErrorWithDetail(c, http.StatusUnauthorized, "ErrNotLogin",
+				errors.New("user disabled or removed"))
+			c.Abort()
+			return
+		}
+		su.Menus = unmarshalUserList(ruser.Menus)
+		su.Nodes = unmarshalUserList(ruser.Nodes)
 		if key, gated := menuForPath(p); gated && !allowedMenu(su.Menus, key) {
 			helper.ErrorWithDetail(c, http.StatusForbidden, "ErrNotLogin",
 				errors.New("menu not permitted for this user"))

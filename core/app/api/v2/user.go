@@ -6,6 +6,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/core/app/api/v2/helper"
 	"github.com/1Panel-dev/1Panel/core/app/dto"
+	"github.com/1Panel-dev/1Panel/core/app/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,6 +53,10 @@ func (b *BaseApi) CreateUser(c *gin.Context) {
 	}
 	info, err := userService.Create(req)
 	if err != nil {
+		if errors.Is(err, service.ErrUserConflict) {
+			helper.BadRequest(c, err)
+			return
+		}
 		helper.InternalServer(c, err)
 		return
 	}

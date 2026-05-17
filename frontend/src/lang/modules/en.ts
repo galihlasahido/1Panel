@@ -2523,6 +2523,7 @@ const message = {
         currentVersion: 'Version',
         license: 'License',
         nodes: 'Nodes',
+        users: 'Users',
         bindNode: 'Bind Node',
         menuSetting: 'Menu Settings',
         menuSettingHelper: 'When only 1 submenu exists, the menu bar will display only that submenu',

@@ -125,6 +125,18 @@ const settingRouter = {
                         activeMenu: '/settings',
                     },
                 },
+                {
+                    path: 'users',
+                    name: 'Users',
+                    hidden: true,
+                    component: () => import('@/views/setting/user/index.vue'),
+                    meta: {
+                        parent: 'menu.settings',
+                        title: 'setting.users',
+                        requiresAuth: true,
+                        activeMenu: '/settings',
+                    },
+                },
             ],
         },
     ],
