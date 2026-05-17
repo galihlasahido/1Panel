@@ -17,9 +17,22 @@ const config = {
     withCredentials: true,
 };
 
-const isCsrfForbidden = (response?: AxiosResponse<any>) => {
-    const message = response?.data?.message;
-    return typeof message === 'string' && message.toLowerCase().includes('csrf token invalid');
+// A dead/expired session or invalid CSRF token: the request can't be
+// trusted and retrying won't help — the user must re-authenticate.
+const isAuthFailure = (response?: AxiosResponse<any>) => {
+    if (!response) return false;
+    if (response.status === 401) return true;
+    const message = (response.data?.message || '').toLowerCase();
+    return (
+        message.includes('csrf token invalid') ||
+        message.includes('session expired') ||
+        message.includes('not logged in')
+    );
+};
+
+const toLogin = () => {
+    globalStore.isLogin = false;
+    router.push({ name: 'entrance', params: { code: globalStore.entrance } });
 };
 
 class RequestHttp {
@@ -123,16 +136,20 @@ class RequestHttp {
                         case 313:
                             router.push({ name: 'Expired' });
                             return;
+                        case 401:
+                            // Expired/invalid session returned as a real HTTP
+                            // 401 (e.g. RBAC mid-session revalidation, session
+                            // middleware). Without this case it fell through to
+                            // default and surfaced as an uncaught rejection with
+                            // no redirect.
+                            toLogin();
+                            return Promise.reject(error);
                         case 403:
-                            if (isCsrfForbidden(response)) {
-                                // A stale/missing CSRF token means the session is
-                                // no longer trusted — send the user back to login
-                                // instead of silently failing the request.
-                                globalStore.isLogin = false;
-                                router.push({
-                                    name: 'entrance',
-                                    params: { code: globalStore.entrance },
-                                });
+                            if (isAuthFailure(response)) {
+                                // Stale CSRF token / not-logged-in: the session
+                                // is no longer trusted — re-authenticate instead
+                                // of silently failing the request.
+                                toLogin();
                                 return Promise.reject(error);
                             }
                             if (response.data && response.data['message']) {
