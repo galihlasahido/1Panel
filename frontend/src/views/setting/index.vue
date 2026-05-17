@@ -34,6 +34,10 @@ const buttons = [
         path: '/settings/snapshot',
     },
     {
+        label: i18n.global.t('setting.nodes'),
+        path: '/settings/nodes',
+    },
+    {
         label: i18n.global.t('setting.license'),
         path: '/settings/license',
     },
@@ -43,12 +47,18 @@ const buttons = [
     },
 ];
 
+function removeButton(path: string) {
+    const i = buttons.findIndex((b) => b.path === path);
+    if (i !== -1) buttons.splice(i, 1);
+}
+
 onMounted(() => {
+    // Path-based removal — index math broke once a tab was inserted.
     if (isOffLine.value) {
-        buttons.splice(5, 1);
+        removeButton('/settings/license');
     }
     if (isFxplay.value) {
-        buttons.splice(6, 1);
+        removeButton('/settings/about');
     }
 });
 </script>
