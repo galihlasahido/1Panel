@@ -20,12 +20,13 @@ func (b *BaseApi) SearchNode(c *gin.Context) {
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	total, items, err := nodeService.Page(req)
+	_, items, err := nodeService.Page(req)
 	if err != nil {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.SuccessWithData(c, dto.PageResult{Total: total, Items: items})
+	items = scopeNodes(c, items, func(n dto.NodeInfo) string { return n.Name })
+	helper.SuccessWithData(c, dto.PageResult{Total: int64(len(items)), Items: items})
 }
 
 // @Tags Node
@@ -129,6 +130,7 @@ func (b *BaseApi) ListAllNodes(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
+	items = scopeNodes(c, items, func(n dto.NodeItem) string { return n.Name })
 	helper.SuccessWithData(c, items)
 }
 
@@ -146,6 +148,7 @@ func (b *BaseApi) ListNodes(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
+	items = scopeNodes(c, items, func(n dto.NodeItem) string { return n.Name })
 	helper.SuccessWithData(c, items)
 }
 
@@ -159,5 +162,6 @@ func (b *BaseApi) ListSimpleNodes(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
+	items = scopeNodes(c, items, func(n dto.SimpleNodeItem) string { return n.Name })
 	helper.SuccessWithData(c, items)
 }

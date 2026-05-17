@@ -3,12 +3,40 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/core/app/api/v2/helper"
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/gin-gonic/gin"
 )
+
+// resolveTargetNode mirrors proxy.go's logic: operateNode query wins,
+// else the CurrentNode header, else "local".
+func resolveTargetNode(c *gin.Context) string {
+	n := c.Query("operateNode")
+	if n == "" || n == "undefined" {
+		n = c.Request.Header.Get("CurrentNode")
+	}
+	if dec, err := url.QueryUnescape(n); err == nil {
+		n = dec
+	}
+	if n == "" {
+		return "local"
+	}
+	return n
+}
+
+// AllowedNode reports whether the session's node allowlist permits the
+// given node name ("*" = all). Exported for handler-side list scoping.
+func AllowedNode(nodes []string, name string) bool {
+	for _, n := range nodes {
+		if n == "*" || n == name {
+			return true
+		}
+	}
+	return false
+}
 
 // menuRule maps an API path prefix to the sidebar menu key that gates
 // it. Checked longest-prefix-first; the first match wins. Anything not
@@ -93,6 +121,17 @@ func RBACEnforce() gin.HandlerFunc {
 				errors.New("menu not permitted for this user"))
 			c.Abort()
 			return
+		}
+		// Node scoping: proxied (non-core) traffic is always bound to a
+		// node — the sub-user must be allowed it. Core routes target
+		// the master itself and are gated by menu / SuperAdmin instead.
+		if !strings.HasPrefix(p, "/api/v2/core") {
+			if !AllowedNode(su.Nodes, resolveTargetNode(c)) {
+				helper.ErrorWithDetail(c, http.StatusForbidden, "ErrNotLogin",
+					errors.New("node not permitted for this user"))
+				c.Abort()
+				return
+			}
 		}
 		c.Next()
 	}

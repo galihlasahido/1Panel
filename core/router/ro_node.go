@@ -23,9 +23,12 @@ func (s *NodeRouter) InitRouter(Router *gin.RouterGroup) {
 		nodeRouter.GET("/simple/all", baseApi.ListSimpleNodes)
 		nodeRouter.POST("/list", baseApi.ListNodes)
 		nodeRouter.GET("/:id", baseApi.GetNode)
-		nodeRouter.POST("/update", baseApi.UpdateNode)
-		nodeRouter.POST("/del/:id", baseApi.DeleteNode)
-		nodeRouter.POST("/healthcheck/:id", baseApi.RecheckNode)
-		nodeRouter.POST("/add", baseApi.AddNode)
+		// Node lifecycle is superadmin-only — a sub-user may select
+		// among its allowed nodes (read/list, scoped in the handler)
+		// but never enroll/modify/delete or force health checks.
+		nodeRouter.POST("/update", middleware.SuperAdmin(), baseApi.UpdateNode)
+		nodeRouter.POST("/del/:id", middleware.SuperAdmin(), baseApi.DeleteNode)
+		nodeRouter.POST("/healthcheck/:id", middleware.SuperAdmin(), baseApi.RecheckNode)
+		nodeRouter.POST("/add", middleware.SuperAdmin(), baseApi.AddNode)
 	}
 }
