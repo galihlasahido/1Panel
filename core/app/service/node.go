@@ -35,6 +35,7 @@ type INodeService interface {
 	EnrollViaSSH(req dto.NodeCreate) (*dto.NodeInfo, error)
 	ListItems() ([]dto.NodeItem, error)
 	ListSimpleItems() ([]dto.SimpleNodeItem, error)
+	SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, error)
 }
 
 type NodeService struct{}
@@ -146,6 +147,59 @@ func (s *NodeService) Page(req dto.NodeSearch) (int64, []dto.NodeInfo, error) {
 		out = append(out, toNodeInfo(n))
 	}
 	return total, out, nil
+}
+
+// SearchOptions is the scalable, server-paginated typeahead behind the
+// node picker. Unlike ListItems() it never loads the whole fleet — it
+// pages + filters in SQL so it stays cheap at thousands of nodes. The
+// synthetic "local" node is injected at the top of page 1 when it
+// matches the active filter so it's always pickable.
+func (s *NodeService) SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, error) {
+	opts := []global.DBOption{}
+	if req.Status != "" {
+		opts = append(opts, repo.WithByStatus(req.Status))
+	}
+	if req.GroupID != 0 {
+		opts = append(opts, repo.WithByGroupID(req.GroupID))
+	}
+	if req.Info != "" {
+		needle := "%" + strings.TrimSpace(req.Info) + "%"
+		opts = append(opts, func(g *gorm.DB) *gorm.DB {
+			return g.Where("name LIKE ? OR addr LIKE ?", needle, needle)
+		})
+	}
+	opts = append(opts, repo.WithOrderDesc("created_at"))
+	if req.PageSize <= 0 {
+		req.PageSize = 20
+	}
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	total, nodes, err := repo.NewINodeRepo().Page(req.Page, req.PageSize, opts...)
+	if err != nil {
+		return 0, nil, err
+	}
+	items := make([]dto.NodeItem, 0, len(nodes)+1)
+
+	localMatches := req.GroupID == 0 &&
+		(req.Status == "" || req.Status == "Healthy") &&
+		(req.Info == "" || strings.Contains("local", strings.ToLower(strings.TrimSpace(req.Info))))
+	if req.Page == 1 && localMatches {
+		items = append(items, localNodeItem())
+		total++
+	}
+	for _, n := range nodes {
+		items = append(items, dto.NodeItem{
+			ID:      n.ID,
+			Name:    n.Name,
+			Addr:    n.Addr,
+			Status:  n.Status,
+			Version: n.Version,
+			IsXpack: false,
+			IsBound: true,
+		})
+	}
+	return total, items, nil
 }
 
 func (s *NodeService) Get(id uint) (*dto.NodeInfo, error) {

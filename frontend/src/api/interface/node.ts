@@ -22,6 +22,16 @@ export namespace NodeMgmt {
         groupID?: number;
     }
 
+    export interface NodeOption {
+        id: number;
+        name: string;
+        addr: string;
+        status: string;
+        version: string;
+        isXpack: boolean;
+        isBound: boolean;
+    }
+
     export interface NodeCreate {
         name: string;
         addr: string;

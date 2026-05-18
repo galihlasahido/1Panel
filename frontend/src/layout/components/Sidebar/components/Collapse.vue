@@ -42,12 +42,54 @@
                 <el-divider v-if="isMasterPro" class="divider" />
 
                 <div v-if="showNodes()">
-                    <el-scrollbar :max-height="isMasterPro ? '257px' : '218px'" :noresize="true">
+                    <el-input
+                        suffix-icon="Search"
+                        v-model="query"
+                        @input="onQueryInput"
+                        class="w-full filter-input"
+                        size="small"
+                        clearable
+                        placeholder="Search nodes"
+                    />
+                    <el-scrollbar :max-height="isMasterPro ? '230px' : '195px'" :noresize="true">
+                        <template v-if="!query">
+                            <div v-if="favorites.length" class="section-label">Favorites</div>
+                            <div
+                                class="dropdown-item"
+                                v-for="item in favorites"
+                                :key="'fav-' + item.name"
+                                @click="changeNode(item)"
+                            >
+                                <div class="node">
+                                    <SvgIcon class="icon" iconName="p-zhuji" />
+                                    <span class="node-name">
+                                        {{ item.name === 'local' ? globalStore.getMasterAlias() : item.name }}
+                                    </span>
+                                    <el-icon class="fav-star" @click.stop="toggleFavorite(item)">
+                                        <StarFilled />
+                                    </el-icon>
+                                </div>
+                            </div>
+                            <div v-if="recents.length" class="section-label">Recent</div>
+                            <div
+                                class="dropdown-item"
+                                v-for="item in recents"
+                                :key="'rec-' + item.name"
+                                @click="changeNode(item)"
+                            >
+                                <div class="node">
+                                    <SvgIcon class="icon" iconName="p-zhuji" />
+                                    <span class="node-name">
+                                        {{ item.name === 'local' ? globalStore.getMasterAlias() : item.name }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="section-label">All nodes</div>
+                        </template>
                         <div
                             class="dropdown-item"
-                            @click="changeNode(item.name)"
-                            :disabled="item.status !== 'Healthy'"
-                            v-for="item in nodeOptions"
+                            @click="changeNode(item)"
+                            v-for="item in items"
                             :key="item.name"
                         >
                             <div class="node">
@@ -55,6 +97,10 @@
                                 <span class="node-name">
                                     {{ item.name === 'local' ? globalStore.getMasterAlias() : item.name }}
                                 </span>
+                                <el-icon class="fav-star" @click.stop="toggleFavorite(item)">
+                                    <StarFilled v-if="isFavorite(item)" />
+                                    <Star v-else />
+                                </el-icon>
                                 <el-tooltip
                                     v-if="item.status !== 'Healthy' || !item.isBound"
                                     :content="
@@ -68,17 +114,12 @@
                                 </el-tooltip>
                             </div>
                         </div>
+                        <div v-if="!items.length && !loading" class="section-label">No matching nodes</div>
+                        <div v-if="hasMore" class="dropdown-item load-more" @click.stop="loadMore">
+                            {{ loadingMore ? '…' : 'Load more' }}
+                        </div>
                     </el-scrollbar>
                 </div>
-                <el-input
-                    v-if="showNodes() && nodes?.length > 5"
-                    suffix-icon="Search"
-                    v-model="filter"
-                    @input="changeFilter"
-                    class="w-full filter-input"
-                    size="small"
-                    clearable
-                />
                 <el-divider class="divider" />
                 <div class="dropdown-item" @click="logout">
                     <SvgIcon class="icon" iconName="p-tuichudenglu3" />
@@ -94,7 +135,8 @@ import { GlobalStore, MenuStore } from '@/store';
 import { countExecutingTask } from '@/api/modules/log';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import i18n from '@/lang';
-import { getAgentSettingInfo, listNodeOptions } from '@/api/modules/setting';
+import { getAgentSettingInfo } from '@/api/modules/setting';
+import { searchNodeOptions } from '@/api/modules/node';
 import { ref, watch } from 'vue';
 import bus from '@/global/bus';
 import { logOutApi } from '@/api/modules/auth';
@@ -103,22 +145,29 @@ import { loadProductProFromDB } from '@/utils/xpack';
 import { routerToNameWithQuery } from '@/utils/router';
 import { setDefaultNodeInfo } from '@/utils/node';
 
-const filter = ref();
+const query = ref('');
 const globalStore = GlobalStore();
 const menuStore = MenuStore();
-const nodes = ref([]);
-const nodeOptions = ref([]);
-const loading = ref();
+const items = ref<any[]>([]);
+const recents = ref<any[]>([]);
+const favorites = ref<any[]>([]);
+const loading = ref(false);
+const loadingMore = ref(false);
+const page = ref(1);
+const pageSize = 20;
+const total = ref(0);
+const hasEnrolled = ref(false);
 const props = defineProps({
     version: String,
 });
 const isMasterPro = computed(() => {
     return globalStore.isMasterPro();
 });
+const hasMore = computed(() => items.value.length < total.value);
 watch(
     () => globalStore.isMasterPro(),
     () => {
-        loadNodes();
+        searchFirst();
     },
 );
 
@@ -137,90 +186,120 @@ const loadCurrentName = () => {
     return globalStore.getMasterAlias();
 };
 
-const showPopover = () => {
-    filter.value = '';
-    loadNodes();
-    changeFilter();
-};
-
-const changeFilter = () => {
-    nodeOptions.value = [];
-    for (const item of nodes.value) {
-        if (item.name.indexOf(filter.value) !== -1) {
-            nodeOptions.value.push(item);
-        }
+const REC_KEY = 'node-recents';
+const FAV_KEY = 'node-favorites';
+const readLS = (k: string) => {
+    try {
+        return JSON.parse(localStorage.getItem(k) || '[]');
+    } catch {
+        return [];
     }
 };
+const writeLS = (k: string, v: any) => localStorage.setItem(k, JSON.stringify(v));
+const snap = (i: any) => ({
+    name: i.name,
+    addr: i.addr,
+    status: i.status,
+    version: i.version,
+    isBound: i.isBound,
+});
 
-const loadNodes = async () => {
-    loading.value = true;
-    nodes.value = [];
-    // OSS multi-node: the node list/switcher used to be Pro-gated here
-    // (early return when !isMasterPro), even though the OSS backend
-    // fully supports enrolled nodes. Always load the node options;
-    // showNodes() keeps the picker hidden until a real node exists.
-    await listNodeOptions('all')
-        .then((res) => {
-            if (!res) {
-                nodes.value = [];
-                setDefaultNodeInfo();
-                loading.value = false;
-                return;
-            }
-            nodes.value = res.data || [];
-            if (nodes.value.length === 0) {
-                setDefaultNodeInfo();
-            }
-            nodes.value.sort((a, b) => {
-                if (a.name === 'local') return -1;
-                if (b.name === 'local') return 1;
-                return 0;
-            });
-            nodeOptions.value = nodes.value || [];
-            loading.value = false;
-        })
-        .catch(() => {
-            nodes.value = [];
-            loading.value = false;
-        });
+const loadPersisted = () => {
+    recents.value = readLS(REC_KEY);
+    favorites.value = readLS(FAV_KEY);
 };
-const changeNode = (command: string) => {
-    if (globalStore.currentNode === command) {
+const isFavorite = (item: any) => favorites.value.some((f) => f.name === item.name);
+const toggleFavorite = (item: any) => {
+    favorites.value = isFavorite(item)
+        ? favorites.value.filter((f) => f.name !== item.name)
+        : [snap(item), ...favorites.value].slice(0, 20);
+    writeLS(FAV_KEY, favorites.value);
+};
+const recordRecent = (item: any) => {
+    if (item.name === 'local') return;
+    recents.value = [snap(item), ...recents.value.filter((r) => r.name !== item.name)].slice(0, 5);
+    writeLS(REC_KEY, recents.value);
+};
+
+// Server-side typeahead: never loads the whole fleet. Scales to
+// thousands of nodes — the SQL pages + filters, the client only ever
+// holds one page (+ recents/favorites snapshots).
+const fetchPage = async (reset: boolean) => {
+    if (reset) {
+        page.value = 1;
+        loading.value = true;
+    } else {
+        loadingMore.value = true;
+    }
+    try {
+        const res = await searchNodeOptions({ page: page.value, pageSize, info: query.value || '' });
+        const data = res?.data?.items || [];
+        total.value = res?.data?.total || 0;
+        items.value = reset ? data : items.value.concat(data);
+        if (!query.value && reset) {
+            hasEnrolled.value = total.value > 1;
+            if (total.value <= 1) setDefaultNodeInfo();
+        }
+    } catch {
+        if (reset) items.value = [];
+    } finally {
+        loading.value = false;
+        loadingMore.value = false;
+    }
+};
+const searchFirst = () => fetchPage(true);
+const loadMore = () => {
+    if (items.value.length >= total.value) return;
+    page.value += 1;
+    fetchPage(false);
+};
+
+let debounceTimer: any;
+const onQueryInput = () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => searchFirst(), 300);
+};
+
+const showPopover = () => {
+    query.value = '';
+    loadPersisted();
+    searchFirst();
+};
+
+const changeNode = (item: any) => {
+    if (!item || globalStore.currentNode === item.name) {
         return;
     }
-    for (const item of nodes.value) {
-        if (item.name == command) {
-            if (command == 'local') {
-                globalStore.currentNode = 'local';
-                globalStore.currentNodeAddr = item.addr;
-                loadGlobalSetting();
-                localStorage.removeItem('dashboardCache');
-                localStorage.removeItem('upgradeChecked');
-                loadProductProFromDB();
-                routerToNameWithQuery('home', { t: Date.now() });
-                return;
-            }
-            if (!item.isBound) {
-                MsgError(i18n.global.t('xpack.node.nodeUnbindHelper'));
-                return;
-            }
-            if (item.status !== 'Healthy') {
-                MsgError(i18n.global.t('xpack.node.nodeUnhealthyHelper'));
-                return;
-            }
-            if (props.version != item.version) {
-                MsgError(i18n.global.t('setting.versionNotSame'));
-                return;
-            }
-            loadGlobalSetting();
-            localStorage.removeItem('dashboardCache');
-            localStorage.removeItem('upgradeChecked');
-            globalStore.currentNode = command || 'local';
-            globalStore.currentNodeAddr = item.addr;
-            loadProductProFromDB();
-            routerToNameWithQuery('home', { t: Date.now() });
-        }
+    if (item.name === 'local') {
+        globalStore.currentNode = 'local';
+        globalStore.currentNodeAddr = item.addr;
+        loadGlobalSetting();
+        localStorage.removeItem('dashboardCache');
+        localStorage.removeItem('upgradeChecked');
+        loadProductProFromDB();
+        routerToNameWithQuery('home', { t: Date.now() });
+        return;
     }
+    if (item.isBound === false) {
+        MsgError(i18n.global.t('xpack.node.nodeUnbindHelper'));
+        return;
+    }
+    if (item.status && item.status !== 'Healthy') {
+        MsgError(i18n.global.t('xpack.node.nodeUnhealthyHelper'));
+        return;
+    }
+    if (item.version && props.version != item.version) {
+        MsgError(i18n.global.t('setting.versionNotSame'));
+        return;
+    }
+    loadGlobalSetting();
+    localStorage.removeItem('dashboardCache');
+    localStorage.removeItem('upgradeChecked');
+    globalStore.currentNode = item.name || 'local';
+    globalStore.currentNodeAddr = item.addr;
+    loadProductProFromDB();
+    recordRecent(item);
+    routerToNameWithQuery('home', { t: Date.now() });
 };
 
 const loadGlobalSetting = async () => {
@@ -229,11 +308,7 @@ const loadGlobalSetting = async () => {
     });
 };
 
-const showNodes = () => {
-    // Show the node switcher whenever there's more than just the local
-    // node (i.e. at least one enrolled node) — OSS or Pro.
-    return nodes.value.length > 1;
-};
+const showNodes = () => hasEnrolled.value;
 
 const taskCount = ref(0);
 const checkTask = async () => {
@@ -267,7 +342,8 @@ const logout = () => {
 };
 
 onMounted(() => {
-    loadNodes();
+    loadPersisted();
+    searchFirst();
     checkTask();
 });
 </script>

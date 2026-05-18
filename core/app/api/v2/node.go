@@ -30,6 +30,26 @@ func (b *BaseApi) SearchNode(c *gin.Context) {
 }
 
 // @Tags Node
+// @Summary Server-paginated node typeahead for the picker
+// @Accept json
+// @Param request body dto.NodeSearch true "request"
+// @Success 200 {object} dto.PageResult
+// @Router /core/nodes/options [post]
+func (b *BaseApi) SearchNodeOptions(c *gin.Context) {
+	var req dto.NodeSearch
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	total, items, err := nodeService.SearchOptions(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	items = scopeNodes(c, items, func(n dto.NodeItem) string { return n.Name })
+	helper.SuccessWithData(c, dto.PageResult{Total: total, Items: items})
+}
+
+// @Tags Node
 // @Summary Get one node by ID
 // @Param id path int true "node id"
 // @Success 200 {object} dto.NodeInfo

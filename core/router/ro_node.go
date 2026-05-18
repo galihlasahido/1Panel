@@ -22,6 +22,7 @@ func (s *NodeRouter) InitRouter(Router *gin.RouterGroup) {
 		nodeRouter.GET("/all", baseApi.ListAllNodes)
 		nodeRouter.GET("/simple/all", baseApi.ListSimpleNodes)
 		nodeRouter.POST("/list", baseApi.ListNodes)
+		nodeRouter.POST("/options", baseApi.SearchNodeOptions)
 		nodeRouter.GET("/:id", baseApi.GetNode)
 		// Node lifecycle is superadmin-only — a sub-user may select
 		// among its allowed nodes (read/list, scoped in the handler)

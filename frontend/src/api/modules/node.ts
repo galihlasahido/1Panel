@@ -7,6 +7,12 @@ export const searchNodes = (params: NodeMgmt.NodeSearch) => {
     return http.post<ResPage<NodeMgmt.NodeInfo>>(`/core/nodes/search`, params);
 };
 
+// Server-paginated typeahead for the node picker — never loads the
+// whole fleet (scales to thousands of nodes).
+export const searchNodeOptions = (params: NodeMgmt.NodeSearch) => {
+    return http.post<ResPage<NodeMgmt.NodeOption>>(`/core/nodes/options`, params);
+};
+
 export const getNode = (id: number) => {
     return http.get<NodeMgmt.NodeInfo>(`/core/nodes/${id}`);
 };
