@@ -112,12 +112,13 @@
                     <template #empty>No failed SSH logins reported.</template>
                 </el-table>
 
-                <el-divider content-position="left">
-                    Host activity timeline
+                <el-divider content-position="left">Host activity timeline</el-divider>
+                <div class="activity-toolbar">
+                    <span class="lbl">Kind</span>
                     <el-select
                         v-model="kindFilter"
                         size="small"
-                        style="width: 170px; margin-left: 12px"
+                        style="width: 170px"
                         @change="loadActivity"
                     >
                         <el-option label="All kinds" value="" />
@@ -128,7 +129,7 @@
                         <el-option label="Fail2Ban unban" value="fail2ban_unban" />
                         <el-option label="File change" value="file_change" />
                     </el-select>
-                </el-divider>
+                </div>
                 <el-table :data="activity" border max-height="520">
                     <el-table-column label="Node" prop="node" min-width="90" />
                     <el-table-column label="Time" min-width="160">
@@ -243,5 +244,15 @@ onMounted(refreshAll);
 }
 .danger {
     color: var(--el-color-danger);
+}
+.activity-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 12px;
+    .lbl {
+        font-size: 12px;
+        color: var(--el-text-color-secondary);
+    }
 }
 </style>
