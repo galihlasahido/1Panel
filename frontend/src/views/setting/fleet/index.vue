@@ -78,6 +78,14 @@
                     <el-button type="primary" @click="reload">Apply</el-button>
                     <el-button @click="openSaveScope">Save as scope</el-button>
                     <el-button v-if="activeScope" type="danger" plain @click="removeScope">Delete scope</el-button>
+                    <el-divider direction="vertical" />
+                    <el-select v-model="bulkAction" style="width: 190px" placeholder="Bulk action">
+                        <el-option label="Health check" value="healthcheck" />
+                        <el-option label="Collect security now" value="security-collect" />
+                    </el-select>
+                    <el-button type="warning" :disabled="!bulkAction" :loading="bulkRunning" @click="runBulk">
+                        Run on scope
+                    </el-button>
                 </div>
 
                 <ComplexTable :pagination-config="paginationConfig" @search="reload" :data="data">
@@ -102,6 +110,26 @@
                 </ComplexTable>
             </template>
         </LayoutContent>
+
+        <el-dialog v-model="bulkOpen" title="Bulk result" width="40%">
+            <div class="text-xs" style="margin-bottom: 8px">
+                {{ bulkResult.succeeded }} succeeded / {{ bulkResult.failed }} failed
+                of {{ bulkResult.total }} node(s).
+            </div>
+            <el-table :data="bulkResult.results" border max-height="380">
+                <el-table-column label="Node" prop="node" min-width="120" />
+                <el-table-column label="OK" width="70">
+                    <template #default="{ row }">
+                        <el-tag :type="row.ok ? 'success' : 'danger'">{{ row.ok ? 'yes' : 'no' }}</el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column label="Message" prop="message" min-width="220" show-overflow-tooltip />
+                <template #empty>No nodes matched the scope.</template>
+            </el-table>
+            <template #footer>
+                <el-button type="primary" @click="bulkOpen = false">{{ $t('commons.button.confirm') }}</el-button>
+            </template>
+        </el-dialog>
 
         <el-dialog v-model="saveOpen" title="Save scope" width="32%" :close-on-click-modal="false">
             <el-form :model="saveForm" label-position="top">
@@ -129,7 +157,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
-import { searchNodes, nodeStats, listScopes, createScope, deleteScope } from '@/api/modules/node';
+import { searchNodes, nodeStats, listScopes, createScope, deleteScope, bulkNodeOp } from '@/api/modules/node';
 import { NodeMgmt } from '@/api/interface/node';
 import { MsgSuccess, MsgError } from '@/utils/message';
 
@@ -260,6 +288,52 @@ const removeScope = async () => {
         await loadScopes();
     } catch (e: any) {
         MsgError(e?.message || 'Delete failed');
+    }
+};
+
+// --- bulk ops across the current scope/filter ---
+const bulkAction = ref<'healthcheck' | 'security-collect' | ''>('');
+const bulkRunning = ref(false);
+const bulkOpen = ref(false);
+const bulkResult = reactive<{
+    total: number;
+    succeeded: number;
+    failed: number;
+    results: { node: string; ok: boolean; message: string }[];
+}>({ total: 0, succeeded: 0, failed: 0, results: [] });
+
+const runBulk = async () => {
+    if (!bulkAction.value) return;
+    const labels = parseLabels();
+    const target =
+        activeScope.value != null
+            ? `saved scope`
+            : labels.length
+              ? `labels [${labels.join(', ')}]`
+              : 'ALL labelled nodes';
+    try {
+        await ElMessageBox.confirm(
+            `Run "${bulkAction.value}" on ${target}? This acts on every matching node.`,
+            'Confirm bulk action',
+            { type: 'warning' },
+        );
+    } catch {
+        return;
+    }
+    bulkRunning.value = true;
+    try {
+        const res = await bulkNodeOp({
+            scopeID: activeScope.value || 0,
+            labels,
+            action: bulkAction.value,
+        });
+        Object.assign(bulkResult, res.data);
+        bulkOpen.value = true;
+        reload();
+    } catch (e: any) {
+        MsgError(e?.response?.data?.message || e?.message || 'Bulk action failed');
+    } finally {
+        bulkRunning.value = false;
     }
 };
 

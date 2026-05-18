@@ -23,4 +23,5 @@ var (
 
 	securityService = service.NewISecurityService()
 	scopeService    = service.NewIScopeService()
+	bulkService     = service.NewIBulkService()
 )

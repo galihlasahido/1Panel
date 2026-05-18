@@ -93,6 +93,28 @@ type NodeScopeUpdate struct {
 	Description string   `json:"description"`
 }
 
+// BulkOpRequest runs one action across a resolved node set (explicit
+// IDs, a saved scope, or ad-hoc labels). Superadmin-only.
+type BulkOpRequest struct {
+	ScopeID uint     `json:"scopeID"`
+	Labels  []string `json:"labels"`
+	NodeIDs []uint   `json:"nodeIDs"`
+	Action  string   `json:"action" validate:"required,oneof=healthcheck security-collect"`
+}
+
+type BulkOpResult struct {
+	Node    string `json:"node"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
+
+type BulkOpResponse struct {
+	Total     int            `json:"total"`
+	Succeeded int            `json:"succeeded"`
+	Failed    int            `json:"failed"`
+	Results   []BulkOpResult `json:"results"`
+}
+
 // NodeStats is the fleet status rollup for a given filter/scope.
 type NodeStats struct {
 	Total     int64 `json:"total"`

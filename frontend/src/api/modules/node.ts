@@ -77,3 +77,17 @@ export const updateScope = (params: {
 export const deleteScope = (id: number) => {
     return http.post(`/core/scopes/del/${id}`, {});
 };
+
+export const bulkNodeOp = (params: {
+    scopeID?: number;
+    labels?: string[];
+    nodeIDs?: number[];
+    action: 'healthcheck' | 'security-collect';
+}) => {
+    return http.post<{
+        total: number;
+        succeeded: number;
+        failed: number;
+        results: { node: string; ok: boolean; message: string }[];
+    }>(`/core/nodes/bulk`, params);
+};

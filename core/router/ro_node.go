@@ -31,6 +31,8 @@ func (s *NodeRouter) InitRouter(Router *gin.RouterGroup) {
 		// Label mutations are superadmin-only (fleet topology).
 		nodeRouter.POST("/labels/set", middleware.SuperAdmin(), baseApi.SetNodeLabels)
 		nodeRouter.POST("/labels/bulk", middleware.SuperAdmin(), baseApi.BulkNodeLabel)
+		// Bulk operational actions across a scope — superadmin only.
+		nodeRouter.POST("/bulk", middleware.SuperAdmin(), baseApi.BulkNodeOp)
 		nodeRouter.GET("/:id", baseApi.GetNode)
 		// Node lifecycle is superadmin-only — a sub-user may select
 		// among its allowed nodes (read/list, scoped in the handler)

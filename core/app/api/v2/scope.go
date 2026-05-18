@@ -69,6 +69,25 @@ func (b *BaseApi) DeleteScope(c *gin.Context) {
 }
 
 // @Tags Node
+// @Summary Run a bulk action across a scope/label/id set
+// @Accept json
+// @Param request body dto.BulkOpRequest true "request"
+// @Success 200 {object} dto.BulkOpResponse
+// @Router /core/nodes/bulk [post]
+func (b *BaseApi) BulkNodeOp(c *gin.Context) {
+	var req dto.BulkOpRequest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	resp, err := bulkService.Run(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, resp)
+}
+
+// @Tags Node
 // @Summary Fleet status rollup for a filter/scope
 // @Accept json
 // @Param request body dto.NodeSearch true "request"
