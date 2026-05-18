@@ -42,6 +42,7 @@ func Init() {
 		migrations.AddNodeTable,
 		migrations.AddUserTable,
 		migrations.AddNodeLabelsTable,
+		migrations.AddNodeScopesTable,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

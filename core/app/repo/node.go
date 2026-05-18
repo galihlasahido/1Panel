@@ -15,6 +15,7 @@ type INodeRepo interface {
 	Update(id uint, vals map[string]interface{}) error
 	Delete(opts ...global.DBOption) error
 	MarkChecked(id uint, status, version, message string) error
+	StatusCounts(opts ...global.DBOption) (map[string]int64, error)
 }
 
 type NodeRepo struct{}
@@ -54,6 +55,28 @@ func (r *NodeRepo) Page(page, pageSize int, opts ...global.DBOption) (int64, []m
 		return 0, nil, err
 	}
 	return total, nodes, nil
+}
+
+// StatusCounts tallies nodes per status in SQL (GROUP BY) so a fleet
+// rollup never loads thousands of rows into memory.
+func (r *NodeRepo) StatusCounts(opts ...global.DBOption) (map[string]int64, error) {
+	type row struct {
+		Status string
+		N      int64
+	}
+	var rows []row
+	db := global.DB.Model(&model.Node{}).Select("status, count(*) as n")
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	if err := db.Group("status").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := map[string]int64{}
+	for _, x := range rows {
+		out[x.Status] = x.N
+	}
+	return out, nil
 }
 
 func (r *NodeRepo) Get(opts ...global.DBOption) (model.Node, error) {

@@ -37,6 +37,7 @@ type INodeService interface {
 	ListSimpleItems() ([]dto.SimpleNodeItem, error)
 	SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, error)
 
+	NodeStats(req dto.NodeSearch) (*dto.NodeStats, error)
 	GetNodeLabels(nodeID uint) ([]dto.NodeLabelKV, error)
 	SetNodeLabels(req dto.NodeLabelSet) error
 	BulkNodeLabel(req dto.NodeLabelBulk) error
@@ -265,6 +266,58 @@ func attachLabels(infos []dto.NodeInfo) {
 	for i := range infos {
 		infos[i].Labels = byNode[infos[i].ID]
 	}
+}
+
+// NodeStats is the fleet rollup for a filter/scope. Counts are done in
+// SQL (GROUP BY) so it stays cheap at thousands of nodes.
+func (s *NodeService) NodeStats(req dto.NodeSearch) (*dto.NodeStats, error) {
+	opts := []global.DBOption{}
+	if req.Status != "" {
+		opts = append(opts, repo.WithByStatus(req.Status))
+	}
+	if req.GroupID != 0 {
+		opts = append(opts, repo.WithByGroupID(req.GroupID))
+	}
+	if req.Info != "" {
+		needle := "%" + strings.TrimSpace(req.Info) + "%"
+		opts = append(opts, func(g *gorm.DB) *gorm.DB {
+			return g.Where("name LIKE ? OR addr LIKE ?", needle, needle)
+		})
+	}
+	labelRestricted := false
+	if ids, restricted, lerr := labelScope(req.Labels); lerr == nil && restricted {
+		labelRestricted = true
+		if len(ids) == 0 {
+			return &dto.NodeStats{}, nil
+		}
+		opts = append(opts, repo.WithByIDs(ids))
+	}
+	counts, err := repo.NewINodeRepo().StatusCounts(opts...)
+	if err != nil {
+		return nil, err
+	}
+	st := &dto.NodeStats{}
+	for status, n := range counts {
+		switch status {
+		case "Healthy":
+			st.Healthy += n
+		case "Unhealthy", "VersionMismatch":
+			st.Unhealthy += n
+		case "Pending":
+			st.Pending += n
+		default:
+			st.Other += n
+		}
+		st.Total += n
+	}
+	localMatches := !labelRestricted && req.GroupID == 0 &&
+		(req.Status == "" || req.Status == "Healthy") &&
+		(req.Info == "" || strings.Contains("local", strings.ToLower(strings.TrimSpace(req.Info))))
+	if localMatches {
+		st.Healthy++
+		st.Total++
+	}
+	return st, nil
 }
 
 func (s *NodeService) GetNodeLabels(nodeID uint) ([]dto.NodeLabelKV, error) {

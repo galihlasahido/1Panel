@@ -23,6 +23,7 @@ func (s *NodeRouter) InitRouter(Router *gin.RouterGroup) {
 		nodeRouter.GET("/simple/all", baseApi.ListSimpleNodes)
 		nodeRouter.POST("/list", baseApi.ListNodes)
 		nodeRouter.POST("/options", baseApi.SearchNodeOptions)
+		nodeRouter.POST("/stats", baseApi.NodeStats)
 		// Label reads: any user with node access (RBAC-gated upstream).
 		nodeRouter.GET("/labels/keys", baseApi.NodeLabelKeys)
 		nodeRouter.POST("/labels/values", baseApi.NodeLabelValues)

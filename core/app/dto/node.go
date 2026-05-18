@@ -70,6 +70,38 @@ type NodeSearch struct {
 	Labels  []string `json:"labels"` // selectors "key=value", AND semantics
 }
 
+// NodeScopeInfo is a saved fleet selector.
+type NodeScopeInfo struct {
+	ID          uint     `json:"id"`
+	Name        string   `json:"name"`
+	Labels      []string `json:"labels"`
+	Status      string   `json:"status"`
+	Description string   `json:"description"`
+}
+
+type NodeScopeCreate struct {
+	Name        string   `json:"name" validate:"required"`
+	Labels      []string `json:"labels"`
+	Status      string   `json:"status"`
+	Description string   `json:"description"`
+}
+
+type NodeScopeUpdate struct {
+	ID          uint     `json:"id" validate:"required"`
+	Labels      []string `json:"labels"`
+	Status      string   `json:"status"`
+	Description string   `json:"description"`
+}
+
+// NodeStats is the fleet status rollup for a given filter/scope.
+type NodeStats struct {
+	Total     int64 `json:"total"`
+	Healthy   int64 `json:"healthy"`
+	Unhealthy int64 `json:"unhealthy"`
+	Pending   int64 `json:"pending"`
+	Other     int64 `json:"other"`
+}
+
 // NodeListReq is the body of POST /core/nodes/list.
 type NodeListReq struct {
 	Type string `json:"type"`

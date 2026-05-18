@@ -52,3 +52,28 @@ export const nodeLabelKeys = () => {
 export const nodeLabelValues = (key: string) => {
     return http.post<string[]>(`/core/nodes/labels/values`, { key });
 };
+
+export const nodeStats = (params: NodeMgmt.NodeSearch) => {
+    return http.post<NodeMgmt.NodeStats>(`/core/nodes/stats`, params);
+};
+
+export const listScopes = () => {
+    return http.get<NodeMgmt.NodeScope[]>(`/core/scopes/search`);
+};
+
+export const createScope = (params: { name: string; labels: string[]; status: string; description: string }) => {
+    return http.post(`/core/scopes/create`, params);
+};
+
+export const updateScope = (params: {
+    id: number;
+    labels: string[];
+    status: string;
+    description: string;
+}) => {
+    return http.post(`/core/scopes/update`, params);
+};
+
+export const deleteScope = (id: number) => {
+    return http.post(`/core/scopes/del/${id}`, {});
+};

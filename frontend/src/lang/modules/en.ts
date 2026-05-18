@@ -2524,6 +2524,7 @@ const message = {
         license: 'License',
         nodes: 'Nodes',
         users: 'Users',
+        fleet: 'Fleet',
         bindNode: 'Bind Node',
         menuSetting: 'Menu Settings',
         menuSettingHelper: 'When only 1 submenu exists, the menu bar will display only that submenu',

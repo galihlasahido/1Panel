@@ -137,6 +137,18 @@ const settingRouter = {
                         activeMenu: '/settings',
                     },
                 },
+                {
+                    path: 'fleet',
+                    name: 'Fleet',
+                    hidden: true,
+                    component: () => import('@/views/setting/fleet/index.vue'),
+                    meta: {
+                        parent: 'menu.settings',
+                        title: 'setting.fleet',
+                        requiresAuth: true,
+                        activeMenu: '/settings',
+                    },
+                },
             ],
         },
     ],

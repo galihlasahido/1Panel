@@ -22,4 +22,5 @@ var (
 	userService    = service.NewIUserService()
 
 	securityService = service.NewISecurityService()
+	scopeService    = service.NewIScopeService()
 )

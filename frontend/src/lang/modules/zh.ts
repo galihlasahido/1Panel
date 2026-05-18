@@ -2014,6 +2014,7 @@ const message = {
         syncToNodeHelper: '同步设置至所选节点',
         nodes: '节点',
         users: '用户',
+        fleet: '集群',
         selectNode: '选择节点',
         selectNodeError: '请选择节点',
         apiInterface: 'API 接口',

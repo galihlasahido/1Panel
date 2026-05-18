@@ -40,6 +40,10 @@ const buttons = reactive([
         path: '/settings/nodes',
     },
     {
+        label: i18n.global.t('setting.fleet'),
+        path: '/settings/fleet',
+    },
+    {
         label: i18n.global.t('setting.license'),
         path: '/settings/license',
     },

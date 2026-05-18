@@ -22,6 +22,22 @@ export namespace NodeMgmt {
         value: string;
     }
 
+    export interface NodeScope {
+        id: number;
+        name: string;
+        labels: string[];
+        status: string;
+        description: string;
+    }
+
+    export interface NodeStats {
+        total: number;
+        healthy: number;
+        unhealthy: number;
+        pending: number;
+        other: number;
+    }
+
     export interface NodeSearch extends ReqPage {
         info?: string;
         status?: string;
