@@ -41,6 +41,7 @@ func Init() {
 		migrations.InitMasterCA,
 		migrations.AddNodeTable,
 		migrations.AddUserTable,
+		migrations.AddNodeLabelsTable,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

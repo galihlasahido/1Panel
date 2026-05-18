@@ -50,6 +50,81 @@ func (b *BaseApi) SearchNodeOptions(c *gin.Context) {
 }
 
 // @Tags Node
+// @Summary List a node's labels
+// @Router /core/nodes/labels/get/{id} [get]
+func (b *BaseApi) GetNodeLabels(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		helper.BadRequest(c, errors.New("invalid id"))
+		return
+	}
+	out, err := nodeService.GetNodeLabels(uint(id))
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, out)
+}
+
+// @Tags Node
+// @Summary Replace a node's full label set
+// @Router /core/nodes/labels/set [post]
+func (b *BaseApi) SetNodeLabels(c *gin.Context) {
+	var req dto.NodeLabelSet
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := nodeService.SetNodeLabels(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Node
+// @Summary Add/remove one label across many nodes
+// @Router /core/nodes/labels/bulk [post]
+func (b *BaseApi) BulkNodeLabel(c *gin.Context) {
+	var req dto.NodeLabelBulk
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := nodeService.BulkNodeLabel(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Node
+// @Summary Distinct label keys (autocomplete)
+// @Router /core/nodes/labels/keys [get]
+func (b *BaseApi) NodeLabelKeys(c *gin.Context) {
+	out, err := nodeService.NodeLabelKeys()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, out)
+}
+
+// @Tags Node
+// @Summary Distinct values for a label key (autocomplete)
+// @Router /core/nodes/labels/values [post]
+func (b *BaseApi) NodeLabelValues(c *gin.Context) {
+	var req dto.NodeLabelValuesReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	out, err := nodeService.NodeLabelValues(req.Key)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, out)
+}
+
+// @Tags Node
 // @Summary Get one node by ID
 // @Param id path int true "node id"
 // @Success 200 {object} dto.NodeInfo

@@ -23,6 +23,13 @@ func (s *NodeRouter) InitRouter(Router *gin.RouterGroup) {
 		nodeRouter.GET("/simple/all", baseApi.ListSimpleNodes)
 		nodeRouter.POST("/list", baseApi.ListNodes)
 		nodeRouter.POST("/options", baseApi.SearchNodeOptions)
+		// Label reads: any user with node access (RBAC-gated upstream).
+		nodeRouter.GET("/labels/keys", baseApi.NodeLabelKeys)
+		nodeRouter.POST("/labels/values", baseApi.NodeLabelValues)
+		nodeRouter.GET("/labels/get/:id", baseApi.GetNodeLabels)
+		// Label mutations are superadmin-only (fleet topology).
+		nodeRouter.POST("/labels/set", middleware.SuperAdmin(), baseApi.SetNodeLabels)
+		nodeRouter.POST("/labels/bulk", middleware.SuperAdmin(), baseApi.BulkNodeLabel)
 		nodeRouter.GET("/:id", baseApi.GetNode)
 		// Node lifecycle is superadmin-only — a sub-user may select
 		// among its allowed nodes (read/list, scoped in the handler)

@@ -32,3 +32,23 @@ export const deleteNode = (id: number) => {
 export const recheckNode = (id: number) => {
     return http.post<NodeMgmt.NodeInfo>(`/core/nodes/healthcheck/${id}`, {});
 };
+
+export const getNodeLabels = (id: number) => {
+    return http.get<NodeMgmt.NodeLabel[]>(`/core/nodes/labels/get/${id}`);
+};
+
+export const setNodeLabels = (nodeID: number, labels: NodeMgmt.NodeLabel[]) => {
+    return http.post(`/core/nodes/labels/set`, { nodeID, labels });
+};
+
+export const bulkNodeLabel = (nodeIDs: number[], key: string, value: string, op: 'add' | 'remove') => {
+    return http.post(`/core/nodes/labels/bulk`, { nodeIDs, key, value, op });
+};
+
+export const nodeLabelKeys = () => {
+    return http.get<string[]>(`/core/nodes/labels/keys`);
+};
+
+export const nodeLabelValues = (key: string) => {
+    return http.post<string[]>(`/core/nodes/labels/values`, { key });
+};

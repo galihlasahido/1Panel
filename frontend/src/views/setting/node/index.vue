@@ -5,8 +5,20 @@
                 <el-button type="primary" @click="openAdd">
                     {{ $t('commons.button.add') }}
                 </el-button>
+                <el-button :disabled="selected.length === 0" @click="openBulk">
+                    Bulk label ({{ selected.length }})
+                </el-button>
             </template>
             <template #rightToolBar>
+                <el-input
+                    v-model="labelFilter"
+                    size="small"
+                    clearable
+                    style="width: 220px; margin-right: 8px"
+                    placeholder="label filter e.g. env=prod,role=db"
+                    @clear="search()"
+                    @keyup.enter="search()"
+                />
                 <TableSearch @search="search()" v-model:searchName="paginationConfig.info" />
                 <TableRefresh @search="search()" />
             </template>
@@ -24,10 +36,12 @@
 
                 <ComplexTable
                     :pagination-config="paginationConfig"
+                    v-model:selects="selected"
                     @sort-change="search"
                     @search="search"
                     :data="data"
                 >
+                    <el-table-column type="selection" fix />
                     <el-table-column :label="$t('commons.table.name')" min-width="120" prop="name" show-overflow-tooltip />
                     <el-table-column label="Address" min-width="160" prop="addr">
                         <template #default="{ row }">{{ row.addr }}:{{ row.port }}</template>
@@ -48,11 +62,25 @@
                             {{ row.lastCheck ? dateFormatSimple(row.lastCheck) : '-' }}
                         </template>
                     </el-table-column>
-                    <el-table-column label="Message" min-width="200" prop="lastMessage" show-overflow-tooltip>
+                    <el-table-column label="Message" min-width="160" prop="lastMessage" show-overflow-tooltip>
                         <template #default="{ row }">{{ row.lastMessage || '-' }}</template>
                     </el-table-column>
-                    <el-table-column :label="$t('commons.table.operate')" width="200" fixed="right">
+                    <el-table-column label="Labels" min-width="180">
                         <template #default="{ row }">
+                            <el-tag
+                                v-for="l in row.labels || []"
+                                :key="l.key"
+                                size="small"
+                                class="mr-1 mb-1"
+                            >
+                                {{ l.key }}={{ l.value }}
+                            </el-tag>
+                            <span v-if="!(row.labels && row.labels.length)">-</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('commons.table.operate')" width="260" fixed="right">
+                        <template #default="{ row }">
+                            <el-button link type="primary" @click="openLabels(row)">Labels</el-button>
                             <el-button link type="primary" :loading="row._checking" @click="recheck(row)">
                                 Recheck
                             </el-button>
@@ -111,6 +139,50 @@
                 </el-button>
             </template>
         </el-dialog>
+
+        <el-dialog v-model="labelsOpen" title="Node labels" width="38%" :close-on-click-modal="false">
+            <div v-for="(l, i) in labelRows" :key="i" class="label-row">
+                <el-input v-model="l.key" placeholder="key (e.g. env)" style="width: 40%" />
+                <span class="eq">=</span>
+                <el-input v-model="l.value" placeholder="value (e.g. prod)" style="width: 40%" />
+                <el-button link type="danger" @click="removeLabelRow(i)">
+                    {{ $t('commons.button.delete') }}
+                </el-button>
+            </div>
+            <el-button link type="primary" @click="addLabelRow">+ Add label</el-button>
+            <template #footer>
+                <el-button @click="labelsOpen = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button type="primary" :loading="labelsSaving" @click="saveLabels">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </template>
+        </el-dialog>
+
+        <el-dialog v-model="bulkOpen" title="Bulk label" width="34%" :close-on-click-modal="false">
+            <el-form :model="bulkForm" label-position="top">
+                <el-form-item label="Operation">
+                    <el-radio-group v-model="bulkForm.op">
+                        <el-radio label="add">Add / set</el-radio>
+                        <el-radio label="remove">Remove key</el-radio>
+                    </el-radio-group>
+                </el-form-item>
+                <el-form-item label="Key">
+                    <el-input v-model="bulkForm.key" placeholder="env" />
+                </el-form-item>
+                <el-form-item v-if="bulkForm.op === 'add'" label="Value">
+                    <el-input v-model="bulkForm.value" placeholder="prod" />
+                </el-form-item>
+                <span class="text-xs">
+                    Applies to {{ selected.length }} selected node(s).
+                </span>
+            </el-form>
+            <template #footer>
+                <el-button @click="bulkOpen = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button type="primary" :loading="bulkSaving" @click="applyBulk">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -118,7 +190,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import type { FormInstance } from 'element-plus';
 import { ElMessageBox } from 'element-plus';
-import { searchNodes, addNode, deleteNode, recheckNode } from '@/api/modules/node';
+import { searchNodes, addNode, deleteNode, recheckNode, setNodeLabels, bulkNodeLabel } from '@/api/modules/node';
 import { NodeMgmt } from '@/api/interface/node';
 import { dateFormatSimple } from '@/utils/date';
 import { MsgSuccess, MsgError } from '@/utils/message';
@@ -146,6 +218,15 @@ const statusType = (s: string) => {
     }
 };
 
+const labelFilter = ref('');
+const selected = ref<NodeMgmt.NodeInfo[]>([]);
+
+const parseLabelFilter = (): string[] =>
+    labelFilter.value
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.includes('='));
+
 const search = async () => {
     loading.value = true;
     try {
@@ -153,6 +234,7 @@ const search = async () => {
             page: paginationConfig.currentPage,
             pageSize: paginationConfig.pageSize,
             info: paginationConfig.info,
+            labels: parseLabelFilter(),
         });
         data.value = res.data.items || [];
         paginationConfig.total = res.data.total;
@@ -160,6 +242,70 @@ const search = async () => {
         MsgError(e?.message || 'Failed to load nodes');
     } finally {
         loading.value = false;
+    }
+};
+
+// --- per-node label editor ---
+const labelsOpen = ref(false);
+const labelsSaving = ref(false);
+const labelsNodeID = ref(0);
+const labelRows = ref<NodeMgmt.NodeLabel[]>([]);
+const openLabels = (row: NodeMgmt.NodeInfo) => {
+    labelsNodeID.value = row.id;
+    labelRows.value = (row.labels || []).map((l) => ({ ...l }));
+    labelsOpen.value = true;
+};
+const addLabelRow = () => labelRows.value.push({ key: '', value: '' });
+const removeLabelRow = (i: number) => labelRows.value.splice(i, 1);
+const saveLabels = async () => {
+    labelsSaving.value = true;
+    try {
+        const clean = labelRows.value.filter((l) => l.key.trim() !== '');
+        await setNodeLabels(labelsNodeID.value, clean);
+        MsgSuccess('Labels updated');
+        labelsOpen.value = false;
+        await search();
+    } catch (e: any) {
+        MsgError(e?.response?.data?.message || e?.message || 'Save failed');
+    } finally {
+        labelsSaving.value = false;
+    }
+};
+
+// --- bulk label across selected nodes ---
+const bulkOpen = ref(false);
+const bulkSaving = ref(false);
+const bulkForm = reactive({ key: '', value: '', op: 'add' as 'add' | 'remove' });
+const openBulk = () => {
+    if (selected.value.length === 0) {
+        MsgError('Select at least one node');
+        return;
+    }
+    bulkForm.key = '';
+    bulkForm.value = '';
+    bulkForm.op = 'add';
+    bulkOpen.value = true;
+};
+const applyBulk = async () => {
+    if (!bulkForm.key.trim()) {
+        MsgError('Label key is required');
+        return;
+    }
+    bulkSaving.value = true;
+    try {
+        await bulkNodeLabel(
+            selected.value.map((n) => n.id).filter((id) => id > 0),
+            bulkForm.key.trim(),
+            bulkForm.value.trim(),
+            bulkForm.op,
+        );
+        MsgSuccess('Labels applied');
+        bulkOpen.value = false;
+        await search();
+    } catch (e: any) {
+        MsgError(e?.response?.data?.message || e?.message || 'Bulk label failed');
+    } finally {
+        bulkSaving.value = false;
     }
 };
 
@@ -248,3 +394,21 @@ const remove = async (row: NodeMgmt.NodeInfo) => {
 
 onMounted(search);
 </script>
+
+<style scoped lang="scss">
+.label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    .eq {
+        color: var(--el-text-color-secondary);
+    }
+}
+.mr-1 {
+    margin-right: 4px;
+}
+.mb-1 {
+    margin-bottom: 4px;
+}
+</style>

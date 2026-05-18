@@ -36,6 +36,12 @@ type INodeService interface {
 	ListItems() ([]dto.NodeItem, error)
 	ListSimpleItems() ([]dto.SimpleNodeItem, error)
 	SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, error)
+
+	GetNodeLabels(nodeID uint) ([]dto.NodeLabelKV, error)
+	SetNodeLabels(req dto.NodeLabelSet) error
+	BulkNodeLabel(req dto.NodeLabelBulk) error
+	NodeLabelKeys() ([]string, error)
+	NodeLabelValues(key string) ([]string, error)
 }
 
 type NodeService struct{}
@@ -137,6 +143,12 @@ func (s *NodeService) Page(req dto.NodeSearch) (int64, []dto.NodeInfo, error) {
 			return g.Where("name LIKE ? OR addr LIKE ?", needle, needle)
 		})
 	}
+	if ids, restricted, lerr := labelScope(req.Labels); lerr == nil && restricted {
+		if len(ids) == 0 {
+			return 0, []dto.NodeInfo{}, nil
+		}
+		opts = append(opts, repo.WithByIDs(ids))
+	}
 	opts = append(opts, repo.WithOrderDesc("created_at"))
 	total, nodes, err := repo.NewINodeRepo().Page(req.Page, req.PageSize, opts...)
 	if err != nil {
@@ -146,6 +158,7 @@ func (s *NodeService) Page(req dto.NodeSearch) (int64, []dto.NodeInfo, error) {
 	for _, n := range nodes {
 		out = append(out, toNodeInfo(n))
 	}
+	attachLabels(out)
 	return total, out, nil
 }
 
@@ -168,6 +181,14 @@ func (s *NodeService) SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, 
 			return g.Where("name LIKE ? OR addr LIKE ?", needle, needle)
 		})
 	}
+	labelRestricted := false
+	if ids, restricted, lerr := labelScope(req.Labels); lerr == nil && restricted {
+		labelRestricted = true
+		if len(ids) == 0 {
+			return 0, []dto.NodeItem{}, nil
+		}
+		opts = append(opts, repo.WithByIDs(ids))
+	}
 	opts = append(opts, repo.WithOrderDesc("created_at"))
 	if req.PageSize <= 0 {
 		req.PageSize = 20
@@ -181,7 +202,7 @@ func (s *NodeService) SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, 
 	}
 	items := make([]dto.NodeItem, 0, len(nodes)+1)
 
-	localMatches := req.GroupID == 0 &&
+	localMatches := !labelRestricted && req.GroupID == 0 &&
 		(req.Status == "" || req.Status == "Healthy") &&
 		(req.Info == "" || strings.Contains("local", strings.ToLower(strings.TrimSpace(req.Info))))
 	if req.Page == 1 && localMatches {
@@ -200,6 +221,88 @@ func (s *NodeService) SearchOptions(req dto.NodeSearch) (int64, []dto.NodeItem, 
 		})
 	}
 	return total, items, nil
+}
+
+// labelScope resolves label selectors ("key=value", AND semantics) to
+// the set of matching node IDs. restricted=true means a label filter
+// was requested, so an empty id set must yield zero results (not "all").
+func labelScope(labels []string) (ids []uint, restricted bool, err error) {
+	sel := map[string]string{}
+	for _, l := range labels {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		kv := strings.SplitN(l, "=", 2)
+		if len(kv) != 2 || kv[0] == "" {
+			continue
+		}
+		sel[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+	}
+	if len(sel) == 0 {
+		return nil, false, nil
+	}
+	ids, err = repo.NewINodeLabelRepo().NodeIDsMatching(sel)
+	return ids, true, err
+}
+
+func attachLabels(infos []dto.NodeInfo) {
+	if len(infos) == 0 {
+		return
+	}
+	ids := make([]uint, 0, len(infos))
+	for _, n := range infos {
+		ids = append(ids, n.ID)
+	}
+	labels, err := repo.NewINodeLabelRepo().ListByNodeIDs(ids)
+	if err != nil {
+		return
+	}
+	byNode := map[uint][]dto.NodeLabelKV{}
+	for _, l := range labels {
+		byNode[l.NodeID] = append(byNode[l.NodeID], dto.NodeLabelKV{Key: l.Key, Value: l.Value})
+	}
+	for i := range infos {
+		infos[i].Labels = byNode[infos[i].ID]
+	}
+}
+
+func (s *NodeService) GetNodeLabels(nodeID uint) ([]dto.NodeLabelKV, error) {
+	rows, err := repo.NewINodeLabelRepo().ListByNode(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.NodeLabelKV, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, dto.NodeLabelKV{Key: r.Key, Value: r.Value})
+	}
+	return out, nil
+}
+
+func (s *NodeService) SetNodeLabels(req dto.NodeLabelSet) error {
+	m := map[string]string{}
+	for _, kv := range req.Labels {
+		if strings.TrimSpace(kv.Key) == "" {
+			continue
+		}
+		m[strings.TrimSpace(kv.Key)] = strings.TrimSpace(kv.Value)
+	}
+	return repo.NewINodeLabelRepo().SetForNode(req.NodeID, m)
+}
+
+func (s *NodeService) BulkNodeLabel(req dto.NodeLabelBulk) error {
+	if req.Op == "remove" {
+		return repo.NewINodeLabelRepo().RemoveFromNodes(req.NodeIDs, req.Key)
+	}
+	return repo.NewINodeLabelRepo().AddToNodes(req.NodeIDs, req.Key, req.Value)
+}
+
+func (s *NodeService) NodeLabelKeys() ([]string, error) {
+	return repo.NewINodeLabelRepo().DistinctKeys()
+}
+
+func (s *NodeService) NodeLabelValues(key string) ([]string, error) {
+	return repo.NewINodeLabelRepo().DistinctValues(key)
 }
 
 func (s *NodeService) Get(id uint) (*dto.NodeInfo, error) {
@@ -227,6 +330,7 @@ func (s *NodeService) Delete(id uint) error {
 	if err := repo.NewINodeRepo().Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
+	_ = repo.NewINodeLabelRepo().DeleteByNode(id)
 	xpack.InvalidateNodeProxy(id)
 	return nil
 }

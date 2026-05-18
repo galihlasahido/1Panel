@@ -10,16 +10,23 @@ export namespace NodeMgmt {
         status: string;
         version: string;
         groupID: number;
+        labels: NodeLabel[];
         lastCheck: string | null;
         lastMessage: string;
         description: string;
         createdAt: string;
     }
 
+    export interface NodeLabel {
+        key: string;
+        value: string;
+    }
+
     export interface NodeSearch extends ReqPage {
         info?: string;
         status?: string;
         groupID?: number;
+        labels?: string[]; // "key=value", AND semantics
     }
 
     export interface NodeOption {

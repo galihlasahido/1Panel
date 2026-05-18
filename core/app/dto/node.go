@@ -2,19 +2,43 @@ package dto
 
 import "time"
 
+type NodeLabelKV struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type NodeInfo struct {
-	ID          uint       `json:"id"`
-	Name        string     `json:"name"`
-	Addr        string     `json:"addr"`
-	Port        uint       `json:"port"`
-	Scope       string     `json:"scope"`
-	Status      string     `json:"status"`
-	Version     string     `json:"version"`
-	GroupID     uint       `json:"groupID"`
-	LastCheck   *time.Time `json:"lastCheck"`
-	LastMessage string     `json:"lastMessage"`
-	Description string     `json:"description"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	ID          uint          `json:"id"`
+	Name        string        `json:"name"`
+	Addr        string        `json:"addr"`
+	Port        uint          `json:"port"`
+	Scope       string        `json:"scope"`
+	Status      string        `json:"status"`
+	Version     string        `json:"version"`
+	GroupID     uint          `json:"groupID"`
+	Labels      []NodeLabelKV `json:"labels"`
+	LastCheck   *time.Time    `json:"lastCheck"`
+	LastMessage string        `json:"lastMessage"`
+	Description string        `json:"description"`
+	CreatedAt   time.Time     `json:"createdAt"`
+}
+
+// NodeLabelSet replaces the full label set on one node.
+type NodeLabelSet struct {
+	NodeID uint          `json:"nodeID" validate:"required"`
+	Labels []NodeLabelKV `json:"labels"`
+}
+
+// NodeLabelBulk adds or removes one label across many nodes.
+type NodeLabelBulk struct {
+	NodeIDs []uint `json:"nodeIDs" validate:"required"`
+	Key     string `json:"key" validate:"required"`
+	Value   string `json:"value"`
+	Op      string `json:"op" validate:"required,oneof=add remove"`
+}
+
+type NodeLabelValuesReq struct {
+	Key string `json:"key" validate:"required"`
 }
 
 type NodeCreate struct {
@@ -41,8 +65,9 @@ type NodeUpdate struct {
 
 type NodeSearch struct {
 	SearchWithPage
-	Status  string `json:"status"`
-	GroupID uint   `json:"groupID"`
+	Status  string   `json:"status"`
+	GroupID uint     `json:"groupID"`
+	Labels  []string `json:"labels"` // selectors "key=value", AND semantics
 }
 
 // NodeListReq is the body of POST /core/nodes/list.
