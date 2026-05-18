@@ -62,6 +62,12 @@ func WithByNode(node string) global.DBOption {
 	}
 }
 
+func WithLimit(n int) global.DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Limit(n)
+	}
+}
+
 func WithOrderDesc(orderBy string) global.DBOption {
 	return WithOrderRuleBy(orderBy, constant.OrderDesc)
 }

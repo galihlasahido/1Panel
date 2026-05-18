@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
@@ -69,10 +70,19 @@ func localNodeItem() dto.NodeItem {
 // always leads with the synthetic local node so the node picker works
 // even with zero enrolled nodes (previously /all fell through to the
 // /:id route and 400'd with "invalid id").
+// maxLegacyNodeList caps the unpaginated /nodes/all|list|simple/all
+// endpoints so a huge fleet can't OOM the master or ship a multi-MB
+// payload. Scalable callers use /nodes/options (paginated) or
+// /nodes/stats (rollup); these legacy endpoints are best-effort.
+const maxLegacyNodeList = 500
+
 func (s *NodeService) ListItems() ([]dto.NodeItem, error) {
-	nodes, err := repo.NewINodeRepo().List()
+	nodes, err := repo.NewINodeRepo().List(repo.WithOrderDesc("created_at"), repo.WithLimit(maxLegacyNodeList))
 	if err != nil {
 		return nil, err
+	}
+	if len(nodes) >= maxLegacyNodeList {
+		global.LOG.Warnf("ListItems hit the %d-node cap; use /core/nodes/options (paginated) for large fleets", maxLegacyNodeList)
 	}
 	items := []dto.NodeItem{localNodeItem()}
 	for _, n := range nodes {
@@ -91,9 +101,12 @@ func (s *NodeService) ListItems() ([]dto.NodeItem, error) {
 
 // ListSimpleItems backs GET /core/nodes/simple/all.
 func (s *NodeService) ListSimpleItems() ([]dto.SimpleNodeItem, error) {
-	nodes, err := repo.NewINodeRepo().List()
+	nodes, err := repo.NewINodeRepo().List(repo.WithOrderDesc("created_at"), repo.WithLimit(maxLegacyNodeList))
 	if err != nil {
 		return nil, err
+	}
+	if len(nodes) >= maxLegacyNodeList {
+		global.LOG.Warnf("ListSimpleItems hit the %d-node cap; use a paginated/scoped view for large fleets", maxLegacyNodeList)
 	}
 	items := []dto.SimpleNodeItem{{
 		ID:            0,
@@ -268,9 +281,40 @@ func attachLabels(infos []dto.NodeInfo) {
 	}
 }
 
+// nodeStatsCache absorbs dashboard refresh storms — the Fleet page can
+// poll the rollup; a short TTL keeps it from hammering the DB at scale
+// without making the number meaningfully stale.
+var (
+	nodeStatsCache sync.Map // key string -> nodeStatsEntry
+)
+
+type nodeStatsEntry struct {
+	at  time.Time
+	val dto.NodeStats
+}
+
+const nodeStatsTTL = 10 * time.Second
+
 // NodeStats is the fleet rollup for a filter/scope. Counts are done in
-// SQL (GROUP BY) so it stays cheap at thousands of nodes.
+// SQL (GROUP BY) so it stays cheap at thousands of nodes; a 10s TTL
+// cache flattens repeated polls.
 func (s *NodeService) NodeStats(req dto.NodeSearch) (*dto.NodeStats, error) {
+	cacheKey := fmt.Sprintf("%s|%d|%s|%s", req.Status, req.GroupID, req.Info, strings.Join(req.Labels, ","))
+	if v, ok := nodeStatsCache.Load(cacheKey); ok {
+		if e, ok := v.(nodeStatsEntry); ok && time.Since(e.at) < nodeStatsTTL {
+			cp := e.val
+			return &cp, nil
+		}
+	}
+	st, err := s.computeNodeStats(req)
+	if err != nil {
+		return nil, err
+	}
+	nodeStatsCache.Store(cacheKey, nodeStatsEntry{at: time.Now(), val: *st})
+	return st, nil
+}
+
+func (s *NodeService) computeNodeStats(req dto.NodeSearch) (*dto.NodeStats, error) {
 	opts := []global.DBOption{}
 	if req.Status != "" {
 		opts = append(opts, repo.WithByStatus(req.Status))
