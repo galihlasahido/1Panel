@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/model"
@@ -53,15 +54,33 @@ func (j *NodeHealth) Run() {
 	if len(nodes) == 0 {
 		return
 	}
-	for i := range nodes {
-		checkOne(nodeRepo, &nodes[i])
+	// Probe concurrently (bounded) so a 1000-node fleet isn't an
+	// O(n × timeout) serial wall. Persist sequentially afterwards —
+	// SQLite is a single writer, so concurrent MarkChecked would just
+	// contend on the write lock.
+	type result struct {
+		id                       uint
+		status, version, message string
 	}
-}
-
-func checkOne(nodeRepo repo.INodeRepo, node *model.Node) {
-	status, version, message := probeNode(node)
-	if err := nodeRepo.MarkChecked(node.ID, status, version, message); err != nil {
-		global.LOG.Errorf("node health: persist result for %q failed: %v", node.Name, err)
+	const probeConcurrency = 24
+	sem := make(chan struct{}, probeConcurrency)
+	results := make([]result, len(nodes))
+	var wg sync.WaitGroup
+	for i := range nodes {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			s, v, m := probeNode(&nodes[idx])
+			results[idx] = result{id: nodes[idx].ID, status: s, version: v, message: m}
+		}(i)
+	}
+	wg.Wait()
+	for _, r := range results {
+		if err := nodeRepo.MarkChecked(r.id, r.status, r.version, r.message); err != nil {
+			global.LOG.Errorf("node health: persist result for node %d failed: %v", r.id, err)
+		}
 	}
 }
 

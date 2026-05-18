@@ -2,6 +2,16 @@
     <div v-loading="loading">
         <LayoutContent :title="$t('menu.security')">
             <template #rightToolBar>
+                <el-select
+                    v-model="scopeID"
+                    placeholder="All nodes (no scope)"
+                    clearable
+                    size="small"
+                    style="width: 200px; margin-right: 8px"
+                    @change="refreshAll()"
+                >
+                    <el-option v-for="s in scopes" :key="s.id" :label="s.name" :value="s.id" />
+                </el-select>
                 <TableRefresh @search="refreshAll()" />
             </template>
             <template #main>
@@ -144,8 +154,21 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { getSecurityOverview, getSecurityActivity } from '@/api/modules/security';
+import { listScopes } from '@/api/modules/node';
 import { Security } from '@/api/interface/security';
+import { NodeMgmt } from '@/api/interface/node';
 import { MsgError } from '@/utils/message';
+
+const scopes = ref<NodeMgmt.NodeScope[]>([]);
+const scopeID = ref<number>(0);
+const loadScopes = async () => {
+    try {
+        const res = await listScopes();
+        scopes.value = res.data || [];
+    } catch {
+        scopes.value = [];
+    }
+};
 
 const activity = ref<Security.ActivityEntry[]>([]);
 const kindFilter = ref('');
@@ -155,7 +178,7 @@ const sevType = (s: string) => (s === 'crit' ? 'danger' : s === 'warn' ? 'warnin
 
 const loadActivity = async () => {
     try {
-        const res = await getSecurityActivity(200, kindFilter.value);
+        const res = await getSecurityActivity(200, kindFilter.value, scopeID.value || 0);
         activity.value = res.data || [];
     } catch (e: any) {
         MsgError(e?.message || 'Failed to load activity timeline');
@@ -177,7 +200,7 @@ const data = reactive<Security.Overview>({
 const load = async () => {
     loading.value = true;
     try {
-        const res = await getSecurityOverview();
+        const res = await getSecurityOverview(scopeID.value || 0);
         Object.assign(data, res.data);
         generatedAt.value = res.data.generatedAt
             ? new Date(res.data.generatedAt).toLocaleTimeString()
@@ -190,6 +213,7 @@ const load = async () => {
 };
 
 const refreshAll = () => {
+    loadScopes();
     load();
     loadActivity();
 };

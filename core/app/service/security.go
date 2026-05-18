@@ -3,15 +3,47 @@ package service
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
+	"github.com/1Panel-dev/1Panel/core/app/repo"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 )
 
 type ISecurityService interface {
-	Overview() (*dto.SecurityOverview, error)
-	Activity(limit int, kind string) ([]dto.SecurityActivity, error)
+	Overview(scopeID uint, labels []string) (*dto.SecurityOverview, error)
+	Activity(limit int, kind string, scopeID uint, labels []string) ([]dto.SecurityActivity, error)
+}
+
+// resolveScope turns an optional saved-scope id + ad-hoc label
+// selectors into a concrete node-ID set. scoped=false means "no scope
+// requested" → fan out to the whole fleet (incl. local).
+func resolveScope(scopeID uint, labels []string) (ids []uint, scoped bool) {
+	sel := map[string]string{}
+	addSel := func(list []string) {
+		for _, l := range list {
+			l = strings.TrimSpace(l)
+			kv := strings.SplitN(l, "=", 2)
+			if len(kv) == 2 && kv[0] != "" {
+				sel[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+			}
+		}
+	}
+	if scopeID > 0 {
+		if sc, err := repo.NewINodeScopeRepo().Get(repo.WithByID(scopeID)); err == nil {
+			addSel(scopeUnmarshal(sc.Labels))
+		}
+	}
+	addSel(labels)
+	if len(sel) == 0 {
+		return nil, false
+	}
+	matched, err := repo.NewINodeLabelRepo().NodeIDsMatching(sel)
+	if err != nil {
+		return []uint{}, true
+	}
+	return matched, true
 }
 
 type SecurityService struct{}
@@ -34,16 +66,28 @@ func unwrap(body []byte) (json.RawMessage, bool) {
 	return e.Data, e.Code == 200
 }
 
-// resultsByName indexes a fan-out so each metric call lines up per node.
-func collect(method, path string, body []byte) map[string]xpack.CollectResult {
-	out := map[string]xpack.CollectResult{}
-	for _, r := range xpack.CollectFromNodes(method, path, body, 6*time.Second) {
-		out[r.NodeName] = r
+// collectFn binds a scope so each metric fan-out targets the same set.
+type collectFn func(method, path string, body []byte) map[string]xpack.CollectResult
+
+func makeCollect(scopeID uint, labels []string) collectFn {
+	ids, scoped := resolveScope(scopeID, labels)
+	return func(method, path string, body []byte) map[string]xpack.CollectResult {
+		out := map[string]xpack.CollectResult{}
+		var results []xpack.CollectResult
+		if scoped {
+			results = xpack.CollectFromScope(method, path, body, 6*time.Second, ids)
+		} else {
+			results = xpack.CollectFromNodes(method, path, body, 6*time.Second)
+		}
+		for _, r := range results {
+			out[r.NodeName] = r
+		}
+		return out
 	}
-	return out
 }
 
-func (s *SecurityService) Overview() (*dto.SecurityOverview, error) {
+func (s *SecurityService) Overview(scopeID uint, labels []string) (*dto.SecurityOverview, error) {
+	collect := makeCollect(scopeID, labels)
 	f2bBase := collect("GET", "/api/v2/toolbox/fail2ban/base", nil)
 	f2bBanned := collect("POST", "/api/v2/toolbox/fail2ban/search", []byte(`{"status":"banned"}`))
 	fwBase := collect("POST", "/api/v2/hosts/firewall/base", []byte(`{}`))
@@ -127,7 +171,7 @@ func (s *SecurityService) Overview() (*dto.SecurityOverview, error) {
 
 // Activity fans the host-activity timeline out across all nodes and
 // returns the merged, newest-first list (capped at `limit`).
-func (s *SecurityService) Activity(limit int, kind string) ([]dto.SecurityActivity, error) {
+func (s *SecurityService) Activity(limit int, kind string, scopeID uint, labels []string) ([]dto.SecurityActivity, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
@@ -136,8 +180,15 @@ func (s *SecurityService) Activity(limit int, kind string) ([]dto.SecurityActivi
 		"pageSize": limit,
 		"kind":     kind,
 	})
+	ids, scoped := resolveScope(scopeID, labels)
+	var results []xpack.CollectResult
+	if scoped {
+		results = xpack.CollectFromScope("POST", "/api/v2/hosts/activity/search", body, 8*time.Second, ids)
+	} else {
+		results = xpack.CollectFromNodes("POST", "/api/v2/hosts/activity/search", body, 8*time.Second)
+	}
 	out := []dto.SecurityActivity{}
-	for _, r := range xpack.CollectFromNodes("POST", "/api/v2/hosts/activity/search", body, 8*time.Second) {
+	for _, r := range results {
 		if r.Err != "" {
 			continue
 		}
