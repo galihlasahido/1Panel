@@ -121,10 +121,15 @@
                     <el-select
                         v-model="form.nodes"
                         multiple
+                        filterable
+                        remote
+                        reserve-keyword
+                        :remote-method="remoteSearchNodes"
+                        :loading="nodeLoading"
                         collapse-tags
                         collapse-tags-tooltip
                         style="width: 100%"
-                        placeholder="select the nodes this user may operate"
+                        placeholder="search & select the nodes this user may operate"
                     >
                         <el-option label="all nodes (*)" value="*" />
                         <el-option v-for="n in nodeOptions" :key="n" :label="n" :value="n" />
@@ -164,7 +169,7 @@ import type { FormInstance } from 'element-plus';
 import { ElMessageBox } from 'element-plus';
 import { searchUsers, createUser, updateUser, updateUserPassword, deleteUser } from '@/api/modules/user';
 import { UserMgmt, RBAC_MENU_KEYS } from '@/api/interface/user';
-import { listNodeOptions } from '@/api/modules/setting';
+import { searchNodeOptions } from '@/api/modules/node';
 import { MsgSuccess, MsgError } from '@/utils/message';
 
 const loading = ref(false);
@@ -172,6 +177,7 @@ const saving = ref(false);
 const data = ref<UserMgmt.UserInfo[]>([]);
 const menuKeys = RBAC_MENU_KEYS;
 const nodeOptions = ref<string[]>([]);
+const nodeLoading = ref(false);
 
 const paginationConfig = reactive({
     cacheSizeKey: 'user-page-size',
@@ -198,12 +204,23 @@ const search = async () => {
     }
 };
 
-const loadNodeOptions = async () => {
+// Server-paginated remote search (FLEET P1) — scales to thousands of
+// nodes; never loads the whole fleet into the multiselect. Selected
+// values still render as tags even when absent from the current page
+// (label === node name).
+const loadNodeOptions = (info = '') => remoteSearchNodes(info);
+
+const remoteSearchNodes = async (info: string) => {
+    nodeLoading.value = true;
     try {
-        const res = await listNodeOptions('all');
-        nodeOptions.value = (res.data || []).map((n: any) => n.name).filter((n: string) => n && n !== 'local');
+        const res = await searchNodeOptions({ page: 1, pageSize: 20, info: info || '' });
+        nodeOptions.value = (res.data?.items || [])
+            .map((n: any) => n.name)
+            .filter((n: string) => n && n !== 'local');
     } catch {
         nodeOptions.value = [];
+    } finally {
+        nodeLoading.value = false;
     }
 };
 
